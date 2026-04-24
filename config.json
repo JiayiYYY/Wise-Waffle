@@ -1,0 +1,14 @@
+{
+  "semantic_scholar": {
+    "api_key": "your_key_here"
+  },
+  "zotero": {
+    "library_id": "your_library_id",
+    "api_key": "your_api_key",
+    "library_type": "user"
+  },
+  "notion": {
+    "token": "your_token",
+    "database_id": "your_database_id"
+  }
+}

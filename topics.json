@@ -1,0 +1,184 @@
+{
+  "_comment": "Semantic Scholar bulk search query syntax: + AND, | OR, - NOT, \"phrase\", * prefix, ~N fuzzy/proximity",
+  "tier1_core": {
+    "ai_fairness_decolonial": [
+      "\"algorithmic bias\" | \"algorithm bias\" (gender | race | ethnicity)",
+      "\"AI fairness\" (communication | media | representation)",
+      "\"generative AI\" representation (gender | race | bias)",
+      "decolonial (AI | algorithm* | technology)",
+      "\"Global South\" (digital | platform | AI) inequalit*",
+      "intersectionalit* (\"machine learning\" | algorithm*)",
+      "\"platform governance\" (inequalit* | marginaliz* | bias)",
+      "datafication (marginaliz* | inequalit* | surveillance)"
+    ],
+    "sexual_behavior_youth": [
+      "\"sexting\" (adolescent* | teen* | youth) (prevalence | behavior | risk* | effect*)",
+      "\"sexual content\" (exposure | use) (adolescent* | youth | teen*) effect*",
+      "pornograph* (adolescent* | youth | teen*) (attitude* | behavior | effect* | use)",
+      "\"sexual socialization\" (media | online | digital | peers)",
+      "\"online sexual\" (solicitation | harassment | grooming | risk*) (youth | adolescent* | teen*)",
+      "\"non-consensual\" (image* | sexting | \"intimate image\") (adolescent* | youth)",
+      "\"sexual script*\" media (adolescent* | youth | young adult*)"
+    ],
+    "social_media_wellbeing": [
+      "\"social media\" (depression | anxiety | loneliness | wellbeing) (adolescent* | youth | teen*)",
+      "\"screen time\" \"mental health\" (child* | adolescent* | youth)",
+      "\"social comparison\" (Instagram | TikTok | \"social media\") (adolescent* | teen*)",
+      "(\"passive use\" | \"active use\") \"social media\" (wellbeing | affect* | depression)",
+      "(\"social media addiction\" | \"problematic social media use\") adolescent*",
+      "\"social media\" longitudinal (wellbeing | depression | anxiety) adolescent*",
+      "(\"technoference\" | \"phubbing\" | \"doomscrolling\") (wellbeing | \"mental health\")"
+    ],
+    "gender_studies": [
+      "\"gender representation\" media | \"gender stereotypes\" media",
+      "feminist (media | communication) (analys* | research | theor*)",
+      "\"non-binary\" | \"gender nonconforming\" media representation",
+      "sexualization women (media | advertising | television)",
+      "\"gender bias\" (news | journalism | algorithm*)",
+      "masculinit* media (representation | portray*)",
+      "intersectional* (gender | race) media"
+    ],
+    "entertainment_youth_media": [
+      "\"parasocial\" (relationship* | interaction*) (youth | adolescent* | children | teen*)",
+      "\"video game\" (adolescent* | youth | children) (aggression | addiction | wellbeing)",
+      "(TikTok | \"short-form video\") (adolescent* | youth | teen*)",
+      "(\"binge-watching\" | \"binge watching\") (adolescent* | teen*) (effect* | wellbeing | sleep)",
+      "fandom (identit* | community | belonging) (adolescent* | youth)",
+      "(YouTube | influencer*) (adolescent* | youth | children) (effect* | parasocial | identit*)"
+    ]
+  },
+  "tier2_interdisciplinary": {
+    "biology_crossover": [
+      "\"differential susceptibility\" media (adolescent* | child*)",
+      "(pubert* | hormonal*) media (effect* | susceptib* | use)",
+      "neurobiolog* | neuroscience \"social media\" adolescent*",
+      "genetic* temperament (media | screen) child* | adolescent*"
+    ],
+    "anthropology_crossover": [
+      "\"digital ethnography\" (social media | platform | online)",
+      "indigenous media (representation | voice | digital)",
+      "\"cross-cultural\" media effect* | use adolescent*",
+      "ritual* | practic* algorithm* | platform (culture | society)"
+    ],
+    "sociology_crossover": [
+      "\"platform capitalism\" | \"surveillance capitalism\" (media | data | youth)",
+      "\"digital inequality\" (socioeconomic | class | race) media",
+      "\"structural inequality\" algorithm* | platform",
+      "datafication (everyday | life | society)"
+    ],
+    "public_health_crossover": [
+      "\"social media\" \"body image\" | \"eating disorder*\" intervention*",
+      "\"screen time\" (sleep | physical health | obesity) child* | adolescent*",
+      "\"health misinformation\" | \"health communication\" (social media | digital) youth",
+      "\"problematic internet use\" adolescent* mental health"
+    ],
+    "political_psychology_crossover": [
+      "\"political socialization\" (social media | digital) youth | adolescent*",
+      "misinformation | disinformation (political | belief*) social media effect*",
+      "\"affective polarization\" social media | platform",
+      "\"news avoidance\" | \"political disengagement\" (social media | digital)",
+      "\"moral foundations\" media | communication",
+      "conspir* theor* (social media | online) (belief* | spread*)"
+    ]
+  },
+  "tier3_ascor_scholars": {
+    "_comment": "ASCoR Youth & Media Entertainment scholars",
+    "scholars": [
+      "Patti Valkenburg",
+      "Jochen Peter",
+      "Jessica Piotrowski",
+      "Sindy Sumter",
+      "Susanne Baumgartner",
+      "Ine Beyens",
+      "Jeroen Lemmens",
+      "Annemarie van Oosten",
+      "Irene van Driel",
+      "Marthe Möller",
+      "Hande Sungur",
+      "Amber van der Wal",
+      "Rusen Tanribilir",
+      "Lauren Taylor",
+      "Lise-Marie Nassen",
+      "Chei Billedo",
+      "Dominique Wirz",
+      "Saurabh Khanna"
+    ]
+  },
+  "tier4_global_scholars": {
+    "_comment": "global researchers",
+    "ai_fairness_decolonial": [
+      "Joy Buolamwini",
+      "Timnit Gebru",
+      "Safiya Umoja Noble",
+      "Ruha Benjamin",
+      "Abeba Birhane",
+      "Chinasa Okolo",
+      "Sasha Costanza-Chock",
+      "Ben Green"
+    ],
+    "social_media_youth_wellbeing": [
+      "Amy Orben",
+      "Andrew Przybylski",
+      "Jean Twenge",
+      "Jeff Hancock",
+      "Laura Vandenbosch",
+      "Candice Odgers",
+      "Douglas Gentile",
+      "Yalda Uhls"
+    ],
+    "sexual_behavior_youth": [
+      "Jane Brown",
+      "Janis Whitlock",
+      "Michael Mrug"
+    ],
+    "gender_media": [
+      "Liesbet van Zoonen",
+      "Rosalind Gill",
+      "Carolyn Kitch",
+      "Gaye Tuchman"
+    ]
+  },
+  "tier5_journals": {
+    "_comment": "not important here anymore",
+    "your_watchlist": [
+      "Computers in Human Behavior",
+      "Media Psychology",
+      "Communication Monographs",
+      "Feminist Media Studies",
+      "Information, Communication & Society",
+      "Journal of Children and Media",
+      "Journal of Communication",
+      "Human Communication Research"
+    ],
+    "high_impact_comm": [
+      "New Media & Society",
+      "Journal of Computer-Mediated Communication",
+      "Communication Research",
+      "Mass Communication and Society",
+      "Social Media + Society",
+      "Political Communication",
+      "Journalism & Mass Communication Quarterly",
+      "Communication Theory"
+    ],
+    "psychology_adjacent": [
+      "Psychology of Popular Media",
+      "Cyberpsychology, Behavior, and Social Networking",
+      "Journal of Media Psychology",
+      "Technology, Mind, and Behavior",
+      "Developmental Psychology",
+      "Journal of Youth and Adolescence",
+      "Journal of Adolescence"
+    ],
+    "gender_feminist": [
+      "Gender & Society",
+      "Sex Roles",
+      "Psychology of Women Quarterly",
+      "Women's Studies in Communication"
+    ],
+    "interdisciplinary_high_impact": [
+      "Nature Human Behaviour",
+      "Perspectives on Psychological Science",
+      "Psychological Science"
+    ]
+  }
+}
