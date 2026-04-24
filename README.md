@@ -1,8 +1,8 @@
 # 🧇 Wise Waffle
 
-An academic literature tracker built for (communication science) researchers. It pulls new papers from Semantic Scholar and OpenAlex, tracks what your favourite scholars are publishing, goes through journals you follow, and saves everything to Zotero and/or Notion automatically. You can also choose to view and manually select the articles you want to save - or just view, no save.
+An academic literature tracker built for (communication science) researchers. It pulls new papers from Semantic Scholar and OpenAlex, tracks what your favourite scholars are publishing, goes through journals you follow, and saves everything to Zotero and/or Notion automatically. You can also choose to manually select the articles you want to save - or just view, no save.
 
-There's a Streamlit web interface for easier use, or you can run it straight from the terminal.
+There's a [Streamlit web interface](http://wise-waffle.streamlit.app/) for easier use, or you can run it straight from the terminal.
 
 ---
 
