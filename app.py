@@ -330,9 +330,6 @@ def build_config(s2_key, zotero_id, zotero_key, notion_tok, notion_db, collectio
         cfg["zotero"] = z
     if notion_tok and notion_db:
         cfg["notion"] = {"token": notion_tok, "database_id": notion_db}
-    if anthropic_key:
-        with open(CONFIG_PATH, "w", encoding="utf-8") as _f:
-            json.dump(cfg, _f, ensure_ascii=False, indent=2)
     return cfg
 
 # ── Session state ─────────────────────────────────────────────────────────────
@@ -374,9 +371,6 @@ with st.sidebar:
     zotero_key = st.text_input("Zotero API Key",           type="password", key="zotero_key_input")
     notion_tok = st.text_input("Notion Token",             type="password", key="notion_tok_input", placeholder="secret_…")
     notion_db  = st.text_input("Notion Database ID",                        key="notion_db_input",  placeholder="32-char ID")
-    if "anthropic_key_input" not in st.session_state:
-        _ant_cfg = (load_json_safe(CONFIG_PATH) or {}).get("anthropic") or {}
-        st.session_state["anthropic_key_input"] = _ant_cfg.get("api_key", "")
     anthropic_key_field = st.text_input("Anthropic API Key", type="password", key="anthropic_key_input", placeholder="sk-ant-…")
 
     # Always read from session state directly to catch prefill
