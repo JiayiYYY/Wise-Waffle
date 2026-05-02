@@ -372,18 +372,18 @@ def render_landing():
 
     with col1:
         st.markdown("""
-<div style="background:white; border:1px solid var(--blush); border-radius:12px; padding:2rem; min-height:300px;">
-    <h2 style="color:var(--accent); margin-top:0; font-size:1.4rem;">Mode 1 — Preset Pipeline</h2>
+<div style="background:white; border:1px solid var(--blush); border-radius:12px; padding:2rem;">
+    <h2 style="color:var(--accent); margin-top:0; font-size:1.4rem;">Mode 1 — Preset Pipeline (my personal setup)</h2>
     <p style="color:#555; font-size:0.92rem; line-height:1.7; margin-bottom:1rem;">
-        Runs your saved topic configuration end-to-end. Keywords, scholars, and journals
-        come from <code>topics.json</code> and <code>journals.json</code>. Best for your weekly routine.
+        Runs a fixed five-tier search tailored to communication science research on media, youth, gender, and AI fairness:
     </p>
-    <ul style="color:#555; font-size:0.85rem; line-height:2; padding-left:1.2rem; margin:0;">
-        <li><span style="color:#d63d6e">●</span> Core keyword search (Tier 1)</li>
-        <li><span style="color:#2aaa8a">●</span> Interdisciplinary crossover (Tier 2)</li>
-        <li><span style="color:#b87c0a">●</span> Tracked scholar papers (Tier 3–4)</li>
-        <li><span style="color:#6b3a8f">●</span> Journal sweeps via OpenAlex (Tier 5)</li>
+    <ul style="color:#555; font-size:0.85rem; line-height:1.9; padding-left:1.2rem; margin:0 0 1rem 0;">
+        <li>Tier 1: core topic keywords (AI fairness, social media wellbeing, gender studies, sexual behaviour and youth, entertainment and youth media)</li>
+        <li>Tier 2: interdisciplinary crossover keywords (biology, anthropology, sociology, public health, political psychology)</li>
+        <li>Tier 3 &amp; 4: tracked scholars in these fields</li>
+        <li>Tier 5: journal sweep across communication, psychology, and gender studies journals via OpenAlex</li>
     </ul>
+    <p style="color:#555; font-size:0.85rem; margin:0;">Good if you want to see how the tool works or share the research interests above.</p>
 </div>
 """, unsafe_allow_html=True)
         st.markdown("<div style='height:0.75rem'></div>", unsafe_allow_html=True)
@@ -395,18 +395,11 @@ def render_landing():
 
     with col2:
         st.markdown("""
-<div style="background:white; border:1px solid #c8e8de; border-radius:12px; padding:2rem; min-height:300px;">
+<div style="background:white; border:1px solid #c8e8de; border-radius:12px; padding:2rem;">
     <h2 style="color:var(--teal); margin-top:0; font-size:1.4rem;">Mode 2 — Custom Search</h2>
-    <p style="color:#555; font-size:0.92rem; line-height:1.7; margin-bottom:1rem;">
-        Enter any keywords, scholars, and journals on the fly — no config files needed.
-        Good for one-off sweeps, new topics, or sharing with colleagues.
+    <p style="color:#555; font-size:0.92rem; line-height:1.7; margin:0;">
+        Enter your own keywords, scholars, journals, and research focus. All input categories are independent — use any combination or just one.
     </p>
-    <ul style="color:#555; font-size:0.85rem; line-height:2; padding-left:1.2rem; margin:0;">
-        <li>📝 Any keywords (one per line)</li>
-        <li>🔀 Optional crossover keywords</li>
-        <li>👤 Specific scholars to track</li>
-        <li>📰 Any journals to sweep</li>
-    </ul>
 </div>
 """, unsafe_allow_html=True)
         st.markdown("<div style='height:0.75rem'></div>", unsafe_allow_html=True)
@@ -775,71 +768,30 @@ Get a free API key at [semanticscholar.org/product/api](https://www.semanticscho
         st.markdown("""
 <div class="intro-box">
 
-Hi there. I'm a wandering waffle in the Netherlands — don't ask me why waffle, I don't even particularly like waffles. Or stroopwafels.
+<p>Welcome, hot nerds. This is an academic research helper that pulls peer-reviewed articles into one place based on your keywords, scholars, and journals.</p>
 
-I'm a researcher in communication science, with the followling interests:
+<p><strong>Highlights:</strong></p>
+<ul>
+  <li>Time range: search from 30 to 365 days back</li>
+  <li>Connected papers: visualise citing and cited relationships</li>
+  <li>Optional save to Zotero and/or Notion</li>
+  <li>Relevance scoring by Claude against your written research focus</li>
+</ul>
 
-<span class="tier-pill" style="background:#fde0ea;color:#d63d6e">AI Fairness & Decolonial perspectives</span>
-<span class="tier-pill" style="background:#fde0ea;color:#d63d6e">Sexual Behavior & Youth</span>
-<span class="tier-pill" style="background:#fde0ea;color:#d63d6e">Social Media & Wellbeing</span>
-<span class="tier-pill" style="background:#fde0ea;color:#d63d6e">Gender Studies</span>
-<span class="tier-pill" style="background:#fde0ea;color:#d63d6e">Entertainment & Youth Media</span>
+<p><strong>To run any search, you need:</strong></p>
+<ol>
+  <li>Semantic Scholar API key — free for academic use, request at <a href="https://www.semanticscholar.org/product/api" target="_blank">semanticscholar.org/product/api</a></li>
+  <li>(optional) Anthropic API key — for Claude relevance scoring, get it at <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a>. Cost is roughly $0.01–0.05 per run depending on paper count.</li>
+  <li>(optional) Zotero API key — free, find it at <a href="https://www.zotero.org/settings/keys" target="_blank">zotero.org/settings/keys</a></li>
+  <li>(optional) Notion integration token — free, set it up at <a href="https://www.notion.so/my-integrations" target="_blank">notion.so/my-integrations</a></li>
+</ol>
 
-I also pull in cross-disciplinary knowledge from:
+<p>In short: Semantic Scholar API is the only mandatory key. Everything else is optional. Use dry run mode to preview results without saving.</p>
 
-<span class="tier-pill" style="background:#d4f0e8;color:#1e8a6e">Biology</span>
-<span class="tier-pill" style="background:#d4f0e8;color:#1e8a6e">Anthropology</span>
-<span class="tier-pill" style="background:#d4f0e8;color:#1e8a6e">Sociology</span>
-<span class="tier-pill" style="background:#d4f0e8;color:#1e8a6e">Public Health</span>
-<span class="tier-pill" style="background:#d4f0e8;color:#1e8a6e">Political Psychology</span>
-
-That's what this app is for — keeping tabs on the literature so we don't have to manually stalk every journal every week.
-You're very welcome to check out the **[GitHub repo](https://github.com/JiayiYYY/Paper-Fetcher)** and deploy it for your own research interests.
-
----
-
-**How it works**
-
-You need 1–3 API keys depending on what you want to do. Enter them in the sidebar on the left.
-
-- 🔑 **Semantic Scholar** (mandatory) — for searching papers. Get one free at [semanticscholar.org/product/api](https://www.semanticscholar.org/product/api)
-- 📚 **Zotero** (optional) — to save papers to your Zotero library. You need your **Library ID** and an **API key**, both from [zotero.org/settings/security](https://www.zotero.org/settings/security)
-- 📝 **Notion** (optional) — to save papers to a Notion database. You need an **Integration token** from [notion.so/my-integrations](https://notion.so/my-integrations) and the **Database ID** from your database URL
-
-If you only want to browse results without saving anything, just fill in the Semantic Scholar key and set **Save to → View only**.
-
-**Search settings (also in the sidebar):**
-- **Mode** — run all tiers at once, or pick keywords / scholars / journals separately
-- **Save to** — choose where to save, or View only to just browse
-- **Look back** — how far back to search (30–365 days)
-- **Dry run** — preview results without saving anything or updating your history
-
-**What the search tiers mean:**
-
-| Tier | What it does |
-|------|-------------|
-| 🔴 **Core** | Keyword search across my main research topics |
-| 🟢 **Crossover** | Interdisciplinary searches — limited results per keyword to avoid noise |
-| 🟡 **Scholars** | Tracks recent publications from specific researchers I follow (ASCoR + global) |
-| 🟣 **Journals** | Full sweep of journals I follow — all recent articles, no keyword filter |
-
-Hit **▶ Run** to fetch papers, preview results here, then tick what you want and save selectively to Zotero and/or Notion.
+<p>For a transparent look at the code and a vibe coding manual, see the GitHub repository: <a href="https://github.com/JiayiYYY/Wise-Waffle" target="_blank">github.com/JiayiYYY/Wise-Waffle</a></p>
 
 </div>
 """, unsafe_allow_html=True)
-
-        with st.expander("📋 Journals we search (Tier 5)"):
-            topics_data = load_json_safe(TOPICS_PATH) or {}
-            tier5 = topics_data.get("tier5_journals", {})
-            for group, journals in tier5.items():
-                if group.startswith("_"):
-                    continue
-                label = JOURNAL_GROUPS.get(group, group)
-                st.markdown(f"**{label}**")
-                cols = st.columns(3)
-                for i, j in enumerate(journals):
-                    cols[i % 3].markdown(f"· {j}")
-                st.markdown("")
 
     st.divider()
 
@@ -975,6 +927,19 @@ def render_mode2():
         st.divider()
 
         st.markdown("### API Keys")
+        try:
+            host_secrets_m2 = dict(st.secrets["host"]) if "host" in st.secrets else {}
+        except Exception:
+            host_secrets_m2 = {}
+        if host_secrets_m2:
+            if st.button("⚡ Fill my credentials", key="m2_fill"):
+                st.session_state["m2_s2_key"]        = host_secrets_m2.get("s2_key", "")
+                st.session_state["m2_zotero_id"]     = host_secrets_m2.get("zotero_id", "")
+                st.session_state["m2_zotero_key"]    = host_secrets_m2.get("zotero_key", "")
+                st.session_state["m2_notion_tok"]    = host_secrets_m2.get("notion_tok", "")
+                st.session_state["m2_notion_db"]     = host_secrets_m2.get("notion_db", "")
+                st.session_state["m2_anthropic_key"] = host_secrets_m2.get("anthropic_key", "")
+
         st.text_input("Semantic Scholar API Key *", type="password", key="m2_s2_key",       placeholder="Required")
         st.text_input("Zotero Library ID",                           key="m2_zotero_id",    placeholder="e.g. 10541129")
         st.text_input("Zotero API Key",              type="password", key="m2_zotero_key")
@@ -1042,6 +1007,7 @@ def render_mode2():
 
     # ── Inputs ──
     st.markdown("### Search Inputs")
+    st.caption("All categories are independent — search with any one or combine them freely.")
     col_left, col_right = st.columns(2)
 
     with col_left:
@@ -1059,13 +1025,13 @@ def render_mode2():
 
     with col_right:
         st.markdown("**Scholars** — fetches their recent papers from Semantic Scholar")
-        st.caption("Full names as they appear on Semantic Scholar. One per line.")
+        st.caption("Enter full names or Semantic Scholar Author IDs (numeric). IDs are more reliable — find them at semanticscholar.org. One per line.")
         scholars_raw = st.text_area("Scholars", height=130, key="m2_scholars",
             placeholder="Amy Orben\nAndrew Przybylski\nPhilipp Masur",
             label_visibility="collapsed")
 
         st.markdown("**Journals** — sweeps all recent articles via OpenAlex")
-        st.caption("Exact journal names for OpenAlex lookup. One per line.")
+        st.caption("Enter exact journal names or OpenAlex Source IDs (format: S12345678). IDs avoid name-matching errors — find them at openalex.org. One per line.")
         journals_raw = st.text_area("Journals", height=110, key="m2_journals",
             placeholder="Journal of Communication\nNew Media & Society\nComputers in Human Behavior",
             label_visibility="collapsed")

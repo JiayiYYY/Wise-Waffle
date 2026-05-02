@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import time
 from collections import Counter
@@ -438,16 +439,33 @@ def run_keywords_flexible(keywords, since, max_per_keyword=20):
 
 
 def run_authors_flexible(author_names, since, papers_per_author=15):
-    """Resolve author names to S2 IDs and fetch their recent papers."""
-    names = [n.strip() for n in author_names if n.strip()]
-    if not names:
+    """Resolve author names/IDs to S2 IDs and fetch their recent papers.
+
+    Numeric entries are treated as Semantic Scholar Author IDs and used directly;
+    non-numeric entries are resolved by name search first.
+    """
+    entries = [n.strip() for n in author_names if n.strip()]
+    if not entries:
         return []
-    print(f"\n[flex:scholars] Resolving {len(names)} scholar IDs…")
-    name_to_id = resolve_author_ids(names)
-    if not name_to_id:
+
+    direct_ids, names_to_resolve = [], []
+    for entry in entries:
+        if entry.isdigit():
+            direct_ids.append(entry)
+            print(f"    [ID] {entry} (direct)")
+        else:
+            names_to_resolve.append(entry)
+
+    resolved_ids = list(direct_ids)
+    if names_to_resolve:
+        print(f"\n[flex:scholars] Resolving {len(names_to_resolve)} scholar name(s)…")
+        name_to_id = resolve_author_ids(names_to_resolve)
+        resolved_ids.extend(name_to_id.values())
+
+    if not resolved_ids:
         return []
-    print(f"\n[flex:scholars] Fetching papers for {len(name_to_id)} scholars…")
-    raw = get_papers_for_authors(list(name_to_id.values()), since=since,
+    print(f"\n[flex:scholars] Fetching papers for {len(resolved_ids)} scholar(s)…")
+    raw = get_papers_for_authors(resolved_ids, since=since,
                                   papers_per_author=papers_per_author)
     deduped = deduplicate([normalize(p, tag="flex:scholar") for p in raw])
     print(f"\n[flex:scholars] {len(deduped)} papers after dedup")
@@ -530,19 +548,29 @@ def _fetch_openalex_by_source_id(journal_name, source_id, since, tag="flex:journ
 
 
 def run_journals_flexible(journal_names, since):
-    """Sweep journals supplied by name using OpenAlex name lookup."""
+    """Sweep journals supplied by name or OpenAlex Source ID (e.g. S12345678).
+
+    Entries matching the pattern S\\d+ are used as Source IDs directly, skipping
+    the name-lookup step.  All other entries are resolved by name.
+    """
     collected = []
-    print("\n[flex:journals] OpenAlex sweep by name")
-    for name in journal_names:
-        name = name.strip()
-        if not name:
+    print("\n[flex:journals] OpenAlex sweep")
+    for entry in journal_names:
+        entry = entry.strip()
+        if not entry:
             continue
-        source_id = _openalex_source_id_by_name(name)
-        if not source_id:
-            print(f"    {name[:50]}: not found in OpenAlex — skipping")
-            continue
-        print(f"    {name[:50]}: found {source_id}")
-        papers = _fetch_openalex_by_source_id(name, source_id, since, tag="flex:journal")
+        if re.match(r'^S\d+$', entry):
+            source_id = entry
+            label     = entry
+            print(f"    {label}: using direct Source ID")
+        else:
+            label     = entry
+            source_id = _openalex_source_id_by_name(entry)
+            if not source_id:
+                print(f"    {entry[:50]}: not found in OpenAlex — skipping")
+                continue
+            print(f"    {entry[:50]}: resolved to {source_id}")
+        papers = _fetch_openalex_by_source_id(label, source_id, since, tag="flex:journal")
         collected.extend(papers)
         time.sleep(0.5)
     deduped = deduplicate(collected)
