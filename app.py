@@ -206,6 +206,7 @@ def render_paper_card(p):
     reason   = p.get("relevance_reason", "")
     if abstract or reason:
         with st.expander("Abstract", expanded=False):
+            st.write("DEBUG abstract:", p.get("abstract", "MISSING"))
             if abstract:
                 st.markdown(f'<p class="abstract-text">{abstract[:800]}{"…" if len(abstract) > 800 else ""}</p>',
                             unsafe_allow_html=True)
