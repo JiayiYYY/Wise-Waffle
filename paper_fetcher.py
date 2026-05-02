@@ -169,6 +169,7 @@ def normalize(paper, tag=""):
         "doi":      doi,
         "url":      paper.get("url", "") or pdf_url,
         "tag":      tag,
+        "paperId":  paper.get("paperId", ""),
     }
 
 def deduplicate(papers):
@@ -711,10 +712,9 @@ def fetch_openalex_network(doi, ref_limit=40, cit_limit=20):
     if not work.get("id"):
         return None
 
-    center          = _oa_normalize_work(work)
-    ref_ids_full    = work.get("referenced_works") or []
-    related_ids_full = work.get("related_works")   or []
-    cited_by_url    = work.get("cited_by_api_url")  # may be None
+    center       = _oa_normalize_work(work)
+    ref_ids_full = work.get("referenced_works") or []
+    cited_by_url = work.get("cited_by_api_url")  # may be None
 
     def _resolve_ids(ids_full, limit, label):
         """Batch-fetch OpenAlex works by ID in groups of 20."""
@@ -740,8 +740,7 @@ def fetch_openalex_network(doi, ref_limit=40, cit_limit=20):
                 print(f"[openalex network] {label} batch error: {e}")
         return results
 
-    references    = _resolve_ids(ref_ids_full,     ref_limit, "refs")
-    related_works = _resolve_ids(related_ids_full, ref_limit, "related")
+    references = _resolve_ids(ref_ids_full, ref_limit, "refs")
 
     # ── Citing works ──────────────────────────────────────────────────────────
     citations = []
@@ -764,12 +763,28 @@ def fetch_openalex_network(doi, ref_limit=40, cit_limit=20):
     else:
         print("[openalex network] cited_by_api_url is None — skipping citations")
 
-    return {
-        "center":        center,
-        "references":    references,
-        "citations":     citations,
-        "related_works": related_works,
-    }
+    return {"center": center, "references": references, "citations": citations}
+
+
+def fetch_s2_related(paper_id):
+    """Return recommended papers for an S2 paper ID via the S2 recommendations endpoint."""
+    if not paper_id:
+        return []
+    url  = f"{S2_BASE}/paper/{paper_id}/recommendations"
+    data = _request("GET", url, params={"fields": "title,authors,year,externalIds"})
+    if not data:
+        return []
+    papers = data.get("recommendedPapers") or data.get("data") or []
+    result = []
+    for p in papers:
+        doi = (p.get("externalIds") or {}).get("DOI", "")
+        result.append({
+            "title":   p.get("title") or "Unknown",
+            "authors": [a["name"] for a in (p.get("authors") or [])[:3] if a.get("name")],
+            "year":    str(p.get("year") or ""),
+            "doi":     doi,
+        })
+    return result
 
 # ── Save to Zotero ────────────────────────────────────────────────────────────
 

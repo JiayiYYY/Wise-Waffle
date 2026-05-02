@@ -215,7 +215,12 @@ def render_paper_card(p):
 def _render_network(p, s2_key=""):
     _NO_DATA = "No citation data available — this paper may not be indexed in OpenAlex yet."
 
-    doi = p.get("doi", "")
+    if s2_key:
+        pf.S2_HEADERS = {"x-api-key": s2_key}
+
+    doi      = p.get("doi", "")
+    paper_id = p.get("paperId", "")
+
     if not doi:
         st.info(_NO_DATA)
         return
@@ -232,9 +237,14 @@ def _render_network(p, s2_key=""):
         st.info(_NO_DATA)
         return
 
-    refs    = data.get("references")    or []
-    cits    = data.get("citations")     or []
-    related = data.get("related_works") or []
+    refs = data.get("references") or []
+    cits = data.get("citations")  or []
+
+    s2_cache_key = f"{pk}__s2_related"
+    if paper_id and s2_cache_key not in cache:
+        with st.spinner("Fetching related papers from Semantic Scholar…"):
+            cache[s2_cache_key] = pf.fetch_s2_related(paper_id)
+    s2_related = cache.get(s2_cache_key) or [] if paper_id else None
 
     def _to_rows(items):
         rows = []
@@ -248,44 +258,32 @@ def _render_network(p, s2_key=""):
             })
         return rows
 
-    st.markdown(f"**References ({len(refs)}) — papers this article cites**")
-    if refs:
+    def _show_table(items):
         st.dataframe(
-            _to_rows(refs),
+            _to_rows(items),
             use_container_width=True,
             hide_index=True,
-            column_config={
-                "DOI": st.column_config.LinkColumn("DOI", display_text="↗ open"),
-            },
+            column_config={"DOI": st.column_config.LinkColumn("DOI", display_text="↗ open")},
         )
+
+    st.markdown(f"**References ({len(refs)}) — papers this article cites**")
+    if refs:
+        _show_table(refs)
     else:
         st.caption("No references indexed.")
 
     st.markdown(f"**Cited by ({len(cits)}) — papers citing this article**")
     if cits:
-        st.dataframe(
-            _to_rows(cits),
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "DOI": st.column_config.LinkColumn("DOI", display_text="↗ open"),
-            },
-        )
+        _show_table(cits)
     else:
         st.caption("No citing papers indexed yet — this paper may be too recent.")
 
-    st.markdown(f"**Related Papers ({len(related)})**")
-    if related:
-        st.dataframe(
-            _to_rows(related),
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "DOI": st.column_config.LinkColumn("DOI", display_text="↗ open"),
-            },
-        )
-    else:
-        st.caption("No related papers indexed.")
+    if s2_related is not None:
+        st.markdown(f"**Related Papers — via Semantic Scholar ({len(s2_related)})**")
+        if s2_related:
+            _show_table(s2_related)
+        else:
+            st.caption("No related papers found.")
 
 COLLECTION_KEY_LABELS = {
     "tier1:ai_fairness_decolonial":          "Core — AI Fairness & Decolonial",
