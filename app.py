@@ -10,6 +10,7 @@ from pathlib import Path
 from collections import Counter
 
 import streamlit as st
+import streamlit.components.v1 as components
 import paper_fetcher as pf
 
 st.set_page_config(page_title="Wise Waffle", page_icon="🧇", layout="wide", initial_sidebar_state="expanded")
@@ -204,6 +205,100 @@ def render_paper_card(p):
                 st.markdown(f'<p class="abstract-text">{abstract[:800]}{"…" if len(abstract) > 800 else ""}</p>',
                             unsafe_allow_html=True)
 
+def _render_network(p, s2_key=""):
+    try:
+        from pyvis.network import Network
+    except ImportError:
+        st.error("pyvis not installed — run: pip install pyvis")
+        return
+
+    if s2_key:
+        pf.S2_HEADERS = {"x-api-key": s2_key}
+
+    doi = p.get("doi", "")
+    pk  = paper_key(p)
+    cache = st.session_state["network_cache"]
+
+    if pk not in cache:
+        with st.spinner("Fetching citation network from Semantic Scholar…"):
+            cache[pk] = pf.fetch_paper_network(doi)
+
+    data = cache[pk]
+    if not data:
+        st.warning("Paper not found on Semantic Scholar — it may not be indexed.")
+        return
+
+    center_id = data["center"].get("paperId", doi)
+    refs      = data.get("references", [])
+    cits      = data.get("citations",  [])
+
+    net = Network(height="480px", width="100%", bgcolor="#fdf8f2",
+                  font_color="#1a1a1a", directed=True)
+    net.set_options("""{
+      "nodes": {"font": {"size": 11, "face": "monospace"}, "borderWidth": 1, "shape": "dot"},
+      "edges": {
+        "arrows": {"to": {"enabled": true, "scaleFactor": 0.5}},
+        "color": {"color": "#c8c0b8", "opacity": 0.7},
+        "smooth": {"type": "curvedCW", "roundness": 0.15}
+      },
+      "physics": {
+        "solver": "forceAtlas2Based",
+        "forceAtlas2Based": {"gravitationalConstant": -35, "centralGravity": 0.01, "springLength": 180},
+        "stabilization": {"iterations": 120}
+      },
+      "interaction": {"hover": true, "tooltipDelay": 80, "navigationButtons": false}
+    }""")
+
+    title_str   = p.get("title", "Unknown")
+    authors_str = ", ".join(p.get("authors", [])[:3])
+    net.add_node(center_id,
+                 label=(title_str[:35] + "…") if len(title_str) > 35 else title_str,
+                 title=f"<b>{title_str}</b><br>{authors_str}<br>{p.get('year', '')}",
+                 color="#d63d6e", size=22)
+
+    for ref in refs:
+        rp = ref.get("citedPaper") or {}
+        if not rp.get("paperId"):
+            continue
+        rtitle   = rp.get("title") or "Unknown"
+        rauthors = ", ".join(a.get("name", "") for a in (rp.get("authors") or [])[:3])
+        net.add_node(rp["paperId"],
+                     label=(rtitle[:30] + "…") if len(rtitle) > 30 else rtitle,
+                     title=f"<b>{rtitle}</b><br>{rauthors}<br>{rp.get('year', '')}",
+                     color="#2aaa8a", size=12)
+        net.add_edge(center_id, rp["paperId"])
+
+    for cit in cits:
+        cp = cit.get("citingPaper") or {}
+        if not cp.get("paperId"):
+            continue
+        ctitle   = cp.get("title") or "Unknown"
+        cauthors = ", ".join(a.get("name", "") for a in (cp.get("authors") or [])[:3])
+        net.add_node(cp["paperId"],
+                     label=(ctitle[:30] + "…") if len(ctitle) > 30 else ctitle,
+                     title=f"<b>{ctitle}</b><br>{cauthors}<br>{cp.get('year', '')}",
+                     color="#f5a623", size=12)
+        net.add_edge(cp["paperId"], center_id)
+
+    n_nodes = len(net.nodes)
+    if n_nodes <= 1:
+        st.info("No connected papers found on Semantic Scholar for this paper.")
+        return
+
+    st.markdown(
+        f'<div style="font-family:DM Mono,monospace;font-size:0.72rem;margin-bottom:0.4rem;'
+        f'display:flex;gap:1.5rem;color:#666">'
+        f'<span><span style="display:inline-block;width:9px;height:9px;border-radius:50%;'
+        f'background:#d63d6e;margin-right:4px;vertical-align:middle"></span>This paper</span>'
+        f'<span><span style="display:inline-block;width:9px;height:9px;border-radius:50%;'
+        f'background:#2aaa8a;margin-right:4px;vertical-align:middle"></span>References ({len(refs)})</span>'
+        f'<span><span style="display:inline-block;width:9px;height:9px;border-radius:50%;'
+        f'background:#f5a623;margin-right:4px;vertical-align:middle"></span>Citing papers ({len(cits)})</span>'
+        f'<span style="margin-left:auto">{n_nodes} nodes</span></div>',
+        unsafe_allow_html=True)
+
+    components.html(net.generate_html(), height=500, scrolling=False)
+
 COLLECTION_KEY_LABELS = {
     "tier1:ai_fairness_decolonial":          "Core — AI Fairness & Decolonial",
     "tier1:sexual_behavior_youth":           "Core — Sexual Behavior & Youth",
@@ -242,7 +337,8 @@ def build_config(s2_key, zotero_id, zotero_key, notion_tok, notion_db, collectio
 
 # ── Session state ─────────────────────────────────────────────────────────────
 for k, v in {"results": [], "saved_this": 0, "selected_keys": set(), "page": 1,
-             "last_filtered_count": 0, "prefill": False, "log_lines": []}.items():
+             "last_filtered_count": 0, "prefill": False, "log_lines": [],
+             "network_paper_key": None, "network_cache": {}}.items():
     if k not in st.session_state:
         st.session_state[k] = v
 
@@ -693,6 +789,13 @@ if results:
                 st.session_state["selected_keys"].discard(pk)
         with col_card:
             render_paper_card(p)
+        if p.get("doi"):
+            is_active = st.session_state.get("network_paper_key") == pk
+            if st.button("▲ Hide Network" if is_active else "🔗 Citation Network",
+                         key=f"net_btn_{pk[:50]}"):
+                st.session_state["network_paper_key"] = None if is_active else pk
+            if st.session_state.get("network_paper_key") == pk:
+                _render_network(p, s2_key)
 
     if total_pages > 1:
         pc1, pc2, pc3, pc4, pc5 = st.columns([1, 1, 2, 1, 1])

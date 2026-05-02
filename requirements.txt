@@ -3,3 +3,4 @@ pyzotero
 notion-client
 streamlit
 anthropic
+pyvis

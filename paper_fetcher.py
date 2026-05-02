@@ -504,6 +504,35 @@ def score_papers(papers, research_focus, min_score=0, api_key="", batch_size=10)
 
     return scored
 
+# ── Citation network ─────────────────────────────────────────────────────────
+
+def fetch_paper_network(doi, limit=40):
+    """Return center paper + references + citations from Semantic Scholar for a DOI."""
+    if not doi:
+        return None
+    paper_id     = f"DOI:{doi}"
+    paper_fields = "title,authors,year,externalIds"
+    ref_fields   = ",".join(f"citedPaper.{f}"   for f in paper_fields.split(","))
+    cit_fields   = ",".join(f"citingPaper.{f}"  for f in paper_fields.split(","))
+
+    center = _request("GET", f"{S2_BASE}/paper/{paper_id}", params={"fields": paper_fields})
+    if not center:
+        return None
+    time.sleep(0.5)
+
+    refs_data = _request("GET", f"{S2_BASE}/paper/{paper_id}/references",
+                          params={"fields": ref_fields, "limit": limit})
+    time.sleep(0.5)
+
+    cits_data = _request("GET", f"{S2_BASE}/paper/{paper_id}/citations",
+                          params={"fields": cit_fields, "limit": limit})
+
+    return {
+        "center":     center,
+        "references": (refs_data or {}).get("data", []),
+        "citations":  (cits_data or {}).get("data", []),
+    }
+
 # ── Save to Zotero ────────────────────────────────────────────────────────────
 
 def save_to_zotero(papers, config, dry_run=False):
