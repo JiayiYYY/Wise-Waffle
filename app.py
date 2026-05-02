@@ -216,9 +216,10 @@ COLLECTION_KEY_LABELS = {
     "tier5:interdisciplinary_high_impact":   "Journal — Interdisciplinary",
 }
 
-def build_config(s2_key, zotero_id, zotero_key, notion_tok, notion_db, collection_keys=None):
+def build_config(s2_key, zotero_id, zotero_key, notion_tok, notion_db, collection_keys=None, anthropic_key=""):
     cfg = load_json_safe(CONFIG_PATH) or {}
     if s2_key: cfg["semantic_scholar"] = {"api_key": s2_key}
+    if anthropic_key: cfg["anthropic"] = {"api_key": anthropic_key}
     if zotero_id and zotero_key:
         z = cfg.get("zotero", {})
         z.update({"library_id": zotero_id, "api_key": zotero_key, "library_type": "user"})
@@ -227,6 +228,9 @@ def build_config(s2_key, zotero_id, zotero_key, notion_tok, notion_db, collectio
         cfg["zotero"] = z
     if notion_tok and notion_db:
         cfg["notion"] = {"token": notion_tok, "database_id": notion_db}
+    if anthropic_key:
+        with open(CONFIG_PATH, "w", encoding="utf-8") as _f:
+            json.dump(cfg, _f, ensure_ascii=False, indent=2)
     return cfg
 
 # ── Session state ─────────────────────────────────────────────────────────────
@@ -266,13 +270,17 @@ with st.sidebar:
     zotero_key = st.text_input("Zotero API Key",           type="password", key="zotero_key_input")
     notion_tok = st.text_input("Notion Token",             type="password", key="notion_tok_input", placeholder="secret_…")
     notion_db  = st.text_input("Notion Database ID",                        key="notion_db_input",  placeholder="32-char ID")
+    _ant_cfg   = (load_json_safe(CONFIG_PATH) or {}).get("anthropic") or {}
+    st.session_state.setdefault("anthropic_key_input", _ant_cfg.get("api_key", ""))
+    anthropic_key_field = st.text_input("Anthropic API Key", type="password", key="anthropic_key_input", placeholder="sk-ant-…")
 
     # Always read from session state directly to catch prefill
-    s2_key     = st.session_state.get("s2_key_input", "")
-    zotero_id  = st.session_state.get("zotero_id_input", "")
-    zotero_key = st.session_state.get("zotero_key_input", "")
-    notion_tok = st.session_state.get("notion_tok_input", "")
-    notion_db  = st.session_state.get("notion_db_input", "")
+    s2_key        = st.session_state.get("s2_key_input", "")
+    zotero_id     = st.session_state.get("zotero_id_input", "")
+    zotero_key    = st.session_state.get("zotero_key_input", "")
+    notion_tok    = st.session_state.get("notion_tok_input", "")
+    notion_db     = st.session_state.get("notion_db_input", "")
+    anthropic_key = st.session_state.get("anthropic_key_input", "")
 
     with st.expander("📁 Zotero Collection Keys (optional)"):
         st.markdown('<p style="font-size:0.75rem;color:#aaa;margin-bottom:0.5rem">8-char key from each collection URL. Leave blank to save to root library.</p>', unsafe_allow_html=True)
@@ -451,7 +459,7 @@ if run_btn:
     st.session_state["page"]          = 1
     st.session_state["log_lines"]     = []
 
-    config = build_config(s2_key, zotero_id, zotero_key, notion_tok, notion_db, collection_keys)
+    config = build_config(s2_key, zotero_id, zotero_key, notion_tok, notion_db, collection_keys, anthropic_key)
     topics = load_json_safe(TOPICS_PATH) or {}
     since  = (datetime.today() - timedelta(days=days_back)).strftime("%Y-%m-%d")
     pf.S2_HEADERS = {"x-api-key": s2_key} if s2_key else {}
@@ -690,7 +698,7 @@ if results:
 
     if selected_papers:
         st.markdown(f"### Save {len(selected_papers)} selected paper{'s' if len(selected_papers) > 1 else ''}")
-        config_now = build_config(s2_key, zotero_id, zotero_key, notion_tok, notion_db, collection_keys)
+        config_now = build_config(s2_key, zotero_id, zotero_key, notion_tok, notion_db, collection_keys, anthropic_key)
         sv1, sv2, sv3 = st.columns([1, 1, 4])
         with sv1:
             if st.button("💾 Save to Zotero", disabled=not (zotero_id and zotero_key)):

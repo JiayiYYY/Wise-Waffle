@@ -1,21 +1,15 @@
-# 🧇 Wise Waffle
+# Wise Waffle
 
-An academic literature tracker built for (communication science) researchers. It pulls new papers from Semantic Scholar and OpenAlex, tracks what your favourite scholars are publishing, goes through journals you follow, and saves everything to Zotero and/or Notion automatically. You can also choose to manually select the articles you want to save - or just view, no save.
-
-There's a [Streamlit web interface](http://wise-waffle.streamlit.app/) for easier use, or you can run it straight from the terminal.
+Academic literature tracker for researchers. Fetches new papers from Semantic Scholar and OpenAlex, scores them for relevance using Claude, and saves them to Zotero and/or Notion.
 
 ---
 
-## What you can do with this
+## Pipeline
 
-Every time you run it, Wise Waffle:
-
-1. Searches _Semantic Scholar_ using your keywords, organised by research topic
-2. Checks what your tracked scholars have published recently
-3. Sweeps through specific journals via _OpenAlex_ and pulls all recent articles
-4. Filters out non-English papers and papers without abstracts
-5. Skips anything you've already saved before
-6. Saves new papers to Zotero (sorted into collections by topic) and/or Notion
+**Fetch** → Semantic Scholar (keyword search + scholar tracking) and OpenAlex (journal sweep)  
+**Filter** → drops non-English papers, papers without abstracts, and anything already saved  
+**Score** → Claude rates each paper 0–10 for relevance to your research focus  
+**Save** → sends results to Zotero (sorted by topic collection) and/or Notion
 
 ---
 
@@ -24,157 +18,94 @@ Every time you run it, Wise Waffle:
 **1. Install dependencies**
 
 ```bash
-pip install requests pyzotero notion-client streamlit langdetect
+pip install -r requirements.txt
 ```
 
-**2. Set up your config**
+**2. Get API keys**
 
-The app reads API keys directly from the Streamlit sidebar — you don't need to edit any files. If you're running from the terminal, create a `config.json`:
+| Key | Where | Required? |
+|-----|-------|-----------|
+| Semantic Scholar | [semanticscholar.org/product/api](https://www.semanticscholar.org/product/api) | Yes |
+| Anthropic | [console.anthropic.com](https://console.anthropic.com) | For relevance scoring |
+| Zotero | [zotero.org/settings/security](https://www.zotero.org/settings/security) — Library ID + API key | Optional |
+| Notion | [notion.so/my-integrations](https://notion.so/my-integrations) — Integration token + Database ID | Optional |
 
-```json
-{
-  "semantic_scholar": { "api_key": "your_key_here" },
-  "zotero": {
-    "library_id": "your_library_id",
-    "api_key": "your_api_key",
-    "library_type": "user"
-  },
-  "notion": {
-    "token": "your_token",
-    "database_id": "your_database_id"
-  }
-}
-```
-
-Get your keys here:
-- **Semantic Scholar** — [semanticscholar.org/product/api](https://www.semanticscholar.org/product/api)
-- **Zotero** — [zotero.org/settings/security](https://www.zotero.org/settings/security)
-- **Notion** — [notion.so/my-integrations](https://notion.so/my-integrations)
-  A Semantic Scholar key is mandatory to get it running, Zotero &/ Notion is optional.
-
-**3. Set up your Notion database (optional)**
-
-Create a database with these columns:
-
-| Column | Type |
-|--------|------|
-| Title | Title |
-| Authors | Text |
-| Year | Text |
-| Journal | Text |
-| DOI | Text |
-| Abstract | Text |
-| URL | URL |
-| Source | Text |
-| Tier | Select |
-
-Then open the database, click `...` → Connections → add your integration.
-
-**4. Zotero collections (optional)**
-
-Create a collection in Zotero for each topic, then enter the 8-character collection keys in the Streamlit sidebar under "Zotero Collection Keys". You can find the key in the collection's URL on zotero.org. If you leave them blank, everything goes to your *root* library.
-
----
-
-## Running it
-
-**Web interface (recommended)**
+**3. Run and configure**
 
 ```bash
 py -m streamlit run app.py
 ```
 
-Fill in your API keys in the sidebar, pick a mode, hit Run. You can preview results before saving anything.
+Enter your API keys and research focus in the sidebar. The Anthropic key and research focus are saved to `config.json` automatically when you run the app.
+
+**4. Notion database (optional)**
+
+Create a database with these columns: Title (Title), Authors, Year, Journal, DOI, Abstract (Text), URL (URL), Source (Text), Tier (Select). Then connect your integration via `...` → Connections.
+
+**5. Zotero collections (optional)**
+
+Create a collection per topic and enter the 8-character collection keys from the collection URL in the sidebar. Leave blank to save to root library.
+
+---
+
+## Run
+
+**Web interface**
+
+```bash
+py -m streamlit run app.py
+```
+
+Fill in your keys, pick a mode, and hit Run. Preview results before saving anything.
 
 **Terminal**
 
 ```bash
-# Full run — keywords + scholars + journals, save to both
-py paper_fetcher.py --mode all --target both
-
-# Preview without saving
-py paper_fetcher.py --mode all --dry-run
-
-# Keywords only
-py paper_fetcher.py --mode search
-
-# Scholar tracking only
-py paper_fetcher.py --mode authors
-
-# Journal sweep only
-py paper_fetcher.py --mode journals
-
-# Clear the cache if a run crashed halfway
-py paper_fetcher.py --clear-cache
+py paper_fetcher.py --mode all --target both   # full run, save to both
+py paper_fetcher.py --mode all --dry-run        # preview without saving
+py paper_fetcher.py --mode search               # keywords only
+py paper_fetcher.py --mode authors              # scholar tracking only
+py paper_fetcher.py --mode journals             # journal sweep only
+py paper_fetcher.py --clear-cache               # clear cache after a crashed run
 ```
 
 ---
 
-## How the search tiers work
+## Search tiers
 
-| Tier | What it does |
-|------|-------------|
-| **Tier 1 — Core** | Keyword search across your main research topics. Uses Semantic Scholar's full query syntax including phrases, OR, wildcards. |
-| **Tier 2 — Crossover** | Interdisciplinary searches with a smaller result cap per keyword, to avoid flooding. |
-| **Tier 3 & 4 — Scholars** | Tracks recent publications from specific researchers you follow. Looks them up by name on Semantic Scholar. |
-| **Tier 5 — Journals** | Full table-of-contents sweep via OpenAlex. No keyword filter — every recent article from journals you care about. |
+| Tier | Source | What it does |
+|------|--------|-------------|
+| Core (1) | Semantic Scholar | Keyword search by topic |
+| Crossover (2) | Semantic Scholar | Interdisciplinary searches, smaller result cap |
+| Scholars (3–4) | Semantic Scholar | Recent papers from tracked researchers |
+| Journals (5) | OpenAlex | Full sweep of followed journals, no keyword filter |
 
-Results are deduplicated across tiers, and anything you've already saved is filtered out automatically.
+Results are deduplicated across tiers. Customise keywords and tracked scholars in `topics.json`; journal list is in `journals.json`.
 
 ---
 
-## Customising your search
+## Relevance scoring
 
-Everything lives in `topics.json`. The structure is:
-
-- **`tier1_core`** — keyword lists per topic. Supports `"phrases"`, `|` for OR, `*` for prefix matching, `(grouping)`.
-- **`tier2_interdisciplinary`** — same format, smaller result limit per keyword.
-- **`tier3_ascor_scholars`** — list of scholar names to track.
-- **`tier4_global_scholars`** — same, grouped by research area.
-- **`tier5_journals`** — not used for search (journals are defined in `journals.json`). You can still reference them here for display purposes.
-
-Journal sources for Tier 5 are in `journals.json`, each with an OpenAlex source ID. The app uses these IDs to pull directly from each journal.
+Set a **Research Focus** in the sidebar and enter your **Anthropic API key**. Each paper is scored 0–10 by Claude before saving, with a one-sentence reason. Scores are stored in Zotero's Extra field and Notion's Source field. Skip scoring by leaving the research focus blank.
 
 ---
 
 ## Files
 
 ```
-wise-waffle/
-├── app.py               # Streamlit web interface
-├── paper_fetcher.py     # Core logic — search, filter, save
-├── topics.json          # Keywords and scholars
-├── journals.json        # Journal list with OpenAlex IDs
-├── requirements.txt     # Python dependencies
-├── config.json          # Your API keys — don't commit this
-├── saved_dois.json      # Auto-generated: deduplication history
-└── cache.json           # Auto-generated: crash recovery cache
+app.py               # Streamlit interface
+paper_fetcher.py     # Core logic — search, filter, score, save
+topics.json          # Keywords and tracked scholars
+journals.json        # Journal list with OpenAlex IDs
+config.json          # API keys — add to .gitignore
+saved_dois.json      # Deduplication history (auto-generated)
+cache.json           # Crash recovery (auto-generated)
 ```
 
-Add these to your `.gitignore`:
+Add to `.gitignore`:
 
 ```
 config.json
 saved_dois.json
 cache.json
 ```
-
----
-
-## A few things to know
-
-- A full run across all tiers takes 20–40 minutes depending on your Semantic Scholar API rate limit.
-- If a run crashes halfway, just run again — `cache.json` saves progress so it picks up where it left off.
-- `saved_dois.json` is your deduplication history. Reset it from the sidebar if you want to re-fetch everything.
-- Tier 5 uses OpenAlex, which has better journal coverage and doesn't require an API key.
-- On Streamlit Cloud, `saved_dois.json` is read-only between sessions. Use the "Reset history" button in the sidebar to clear it.
-
----
-
-## Built with
-
-- [Semantic Scholar API](https://www.semanticscholar.org/product/api)
-- [OpenAlex API](https://openalex.org)
-- [pyzotero](https://github.com/urschrei/pyzotero)
-- [notion-client](https://github.com/ramnes/notion-sdk-py)
-- [Streamlit](https://streamlit.io)
