@@ -669,16 +669,17 @@ def fetch_paper_network(doi, limit=40):
     """Return center paper + references + citations from Semantic Scholar for a DOI."""
     if not doi:
         return None
-    paper_id     = f"DOI:{doi}"
-    paper_fields = "title,authors,year,externalIds"
-    ref_fields   = ",".join(f"citedPaper.{f}"   for f in paper_fields.split(","))
-    cit_fields   = ",".join(f"citingPaper.{f}"  for f in paper_fields.split(","))
+    paper_fields = "title,authors,year,externalIds,paperId"
+    ref_fields   = ",".join(f"citedPaper.{f}"  for f in paper_fields.split(","))
+    cit_fields   = ",".join(f"citingPaper.{f}" for f in paper_fields.split(","))
 
-    center = _request("GET", f"{S2_BASE}/paper/{paper_id}", params={"fields": paper_fields})
+    # Resolve via DOI first; then use the canonical paperId for refs/cits calls.
+    center = _request("GET", f"{S2_BASE}/paper/DOI:{doi}", params={"fields": paper_fields})
     if not center:
         return None
     time.sleep(0.5)
 
+    paper_id  = center.get("paperId") or f"DOI:{doi}"
     refs_data = _request("GET", f"{S2_BASE}/paper/{paper_id}/references",
                           params={"fields": ref_fields, "limit": limit})
     time.sleep(0.5)

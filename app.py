@@ -240,6 +240,10 @@ def _render_network(p, s2_key=""):
     refs      = data.get("references") or []
     cits      = data.get("citations")  or []
 
+    st.write("DEBUG — center:", data["center"])
+    st.write(f"DEBUG — references ({len(refs)}):", refs[:3])
+    st.write(f"DEBUG — citations ({len(cits)}):", cits[:3])
+
     net = Network(height="480px", width="100%", bgcolor="#fdf8f2",
                   font_color="#1a1a1a", directed=True)
     net.set_options("""{
