@@ -696,9 +696,11 @@ def fetch_openalex_network(doi, ref_limit=40, cit_limit=20):
         return None
 
     _select = "title,doi,publication_year,authorships,referenced_works,cited_by_api_url"
+    url = f"https://api.openalex.org/works/doi:{doi}"
+    print(f"[openalex network] GET {url}")
     try:
         r = requests.get(
-            f"https://api.openalex.org/works/doi:{doi}",
+            url,
             params={"select": _select},
             timeout=15,
         )

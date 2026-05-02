@@ -230,6 +230,8 @@ def _render_network(p, s2_key=""):
     pk    = paper_key(p)
     cache = st.session_state["network_cache"]
 
+    st.write("DEBUG DOI:", p.get("doi"))
+
     if pk not in cache:
         with st.spinner("Fetching citation network from OpenAlex…"):
             cache[pk] = pf.fetch_openalex_network(doi)
