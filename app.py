@@ -5,7 +5,6 @@ Run with: py -m streamlit run app.py
 
 import builtins
 import json
-import requests
 from datetime import datetime, timedelta
 from pathlib import Path
 from collections import Counter
