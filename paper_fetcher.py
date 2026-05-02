@@ -688,56 +688,54 @@ def fetch_openalex_network(doi, ref_limit=40, cit_limit=20):
 
     Returns a dict with keys:
         center      – {title, doi, year}
-        references  – list of {title, doi, year, authors}  (papers this work cites)
-        citations   – list of {title, doi, year, authors}  (papers that cite this work)
+        references  – list of {title, doi, year, authors}
+        citations   – list of {title, doi, year, authors}
     Returns None if the DOI is missing or OpenAlex returns no data.
     """
     if not doi:
         return None
 
-    _select = "title,doi,publication_year,authorships,referenced_works,cited_by_api_url"
-    url = f"https://api.openalex.org/works/doi:{doi}"
+    url = f"https://api.openalex.org/works/https://doi.org/{doi}"
     print(f"[openalex network] GET {url}")
     try:
-        r = requests.get(
-            url,
-            params={"select": _select},
-            timeout=15,
-        )
+        r = requests.get(url, timeout=15)
     except requests.RequestException as e:
         print(f"[openalex network] request error: {e}")
         return None
 
     print(f"[openalex network] status: {r.status_code}")
-    print(f"[openalex network] response[:200]: {r.text[:200]}")
-
-    if r.status_code != 200 or not r.json().get("id"):
-        print(f"[openalex network] no usable data for doi:{doi}")
+    if r.status_code != 200:
         return None
 
-    work          = r.json()
-    center        = _oa_normalize_work(work)
-    ref_ids_full  = work.get("referenced_works") or []
-    cited_by_url  = work.get("cited_by_api_url") or ""
+    work = r.json()
+    if not work.get("id"):
+        return None
 
-    # ── References ────────────────────────────────────────────────────────────
+    center       = _oa_normalize_work(work)
+    ref_ids_full = work.get("referenced_works") or []
+    cited_by_url = work.get("cited_by_api_url")  # may be None
+
+    # ── References — batch in groups of 20 ───────────────────────────────────
     references = []
-    ref_ids    = [rid.rsplit("/", 1)[-1] for rid in ref_ids_full[:ref_limit]]
-    if ref_ids:
+    short_ids  = [rid.rsplit("/", 1)[-1] for rid in ref_ids_full[:ref_limit]]
+    for i in range(0, len(short_ids), 20):
+        batch = short_ids[i:i + 20]
         try:
             rr = requests.get(
                 "https://api.openalex.org/works",
                 params={
-                    "filter":   f"openalex_id:{'|'.join(ref_ids)}",
-                    "per-page": ref_limit,
-                    "select":   "title,doi,publication_year,authorships",
+                    "filter":   f"openalex:{'|'.join(batch)}",
+                    "per-page": 20,
+                    "select":   "id,title,doi,publication_year,authorships",
                 },
                 timeout=20,
             )
             if rr.status_code == 200:
-                references = [_oa_normalize_work(w) for w in rr.json().get("results", [])]
+                references.extend(_oa_normalize_work(w) for w in rr.json().get("results", []))
+            else:
+                print(f"[openalex network] refs batch HTTP {rr.status_code}")
         except requests.RequestException as e:
-            print(f"[openalex network] references error: {e}")
+            print(f"[openalex network] refs batch error: {e}")
 
     # ── Citing works ──────────────────────────────────────────────────────────
     citations = []
@@ -747,14 +745,18 @@ def fetch_openalex_network(doi, ref_limit=40, cit_limit=20):
                 cited_by_url,
                 params={
                     "per-page": cit_limit,
-                    "select":   "title,doi,publication_year,authorships",
+                    "select":   "id,title,doi,publication_year,authorships",
                 },
                 timeout=20,
             )
             if cr.status_code == 200:
                 citations = [_oa_normalize_work(w) for w in cr.json().get("results", [])]
+            else:
+                print(f"[openalex network] citations HTTP {cr.status_code}")
         except requests.RequestException as e:
             print(f"[openalex network] citations error: {e}")
+    else:
+        print("[openalex network] cited_by_api_url is None — skipping citations")
 
     return {"center": center, "references": references, "citations": citations}
 
