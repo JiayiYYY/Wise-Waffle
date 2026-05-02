@@ -708,8 +708,11 @@ def fetch_openalex_network(doi, ref_limit=40, cit_limit=20):
         print(f"[openalex network] request error: {e}")
         return None
 
+    print(f"[openalex network] status: {r.status_code}")
+    print(f"[openalex network] response[:200]: {r.text[:200]}")
+
     if r.status_code != 200 or not r.json().get("id"):
-        print(f"[openalex network] HTTP {r.status_code} for doi:{doi}")
+        print(f"[openalex network] no usable data for doi:{doi}")
         return None
 
     work          = r.json()
