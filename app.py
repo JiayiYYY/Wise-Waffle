@@ -368,6 +368,35 @@ def render_landing():
 </div>
 """, unsafe_allow_html=True)
 
+    with st.expander("👋 What is this?", expanded=True):
+        st.markdown("""
+<div class="intro-box">
+
+<p>Welcome, hot nerds. This is an academic research helper that pulls peer-reviewed articles into one place based on your keywords, scholars, and journals.</p>
+
+<p><strong>Highlights:</strong></p>
+<ul>
+  <li>Time range: search from 30 to 365 days back</li>
+  <li>Connected papers: visualise citing and cited relationships</li>
+  <li>Optional save to Zotero and/or Notion</li>
+  <li>Relevance scoring by Claude against your written research focus</li>
+</ul>
+
+<p><strong>To run any search, you need:</strong></p>
+<ol>
+  <li>Semantic Scholar API key — free for academic use, request at <a href="https://www.semanticscholar.org/product/api" target="_blank">semanticscholar.org/product/api</a></li>
+  <li>(optional) Anthropic API key — for Claude relevance scoring, get it at <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a>. Cost is roughly $0.01–0.05 per run depending on paper count.</li>
+  <li>(optional) Zotero API key — free, find it at <a href="https://www.zotero.org/settings/keys" target="_blank">zotero.org/settings/keys</a></li>
+  <li>(optional) Notion integration token — free, set it up at <a href="https://www.notion.so/my-integrations" target="_blank">notion.so/my-integrations</a></li>
+</ol>
+
+<p>In short: Semantic Scholar API is the only mandatory key. Everything else is optional. Use dry run mode to preview results without saving.</p>
+
+<p>For a transparent look at the code and a vibe coding manual, see the GitHub repository: <a href="https://github.com/JiayiYYY/Wise-Waffle" target="_blank">github.com/JiayiYYY/Wise-Waffle</a></p>
+
+</div>
+""", unsafe_allow_html=True)
+
     col1, col2 = st.columns(2, gap="large")
 
     with col1:
@@ -761,35 +790,6 @@ Get a free API key at [semanticscholar.org/product/api](https://www.semanticscho
     <p style="color:#9a9490; font-family:'DM Mono',monospace; font-size:0.85rem; letter-spacing:0.12em; text-transform:uppercase;">
         Weekly academic literature tracker &nbsp;·&nbsp; Semantic Scholar → Zotero & Notion
     </p>
-</div>
-""", unsafe_allow_html=True)
-
-    with st.expander("👋 What is this?", expanded=True):
-        st.markdown("""
-<div class="intro-box">
-
-<p>Welcome, hot nerds. This is an academic research helper that pulls peer-reviewed articles into one place based on your keywords, scholars, and journals.</p>
-
-<p><strong>Highlights:</strong></p>
-<ul>
-  <li>Time range: search from 30 to 365 days back</li>
-  <li>Connected papers: visualise citing and cited relationships</li>
-  <li>Optional save to Zotero and/or Notion</li>
-  <li>Relevance scoring by Claude against your written research focus</li>
-</ul>
-
-<p><strong>To run any search, you need:</strong></p>
-<ol>
-  <li>Semantic Scholar API key — free for academic use, request at <a href="https://www.semanticscholar.org/product/api" target="_blank">semanticscholar.org/product/api</a></li>
-  <li>(optional) Anthropic API key — for Claude relevance scoring, get it at <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a>. Cost is roughly $0.01–0.05 per run depending on paper count.</li>
-  <li>(optional) Zotero API key — free, find it at <a href="https://www.zotero.org/settings/keys" target="_blank">zotero.org/settings/keys</a></li>
-  <li>(optional) Notion integration token — free, set it up at <a href="https://www.notion.so/my-integrations" target="_blank">notion.so/my-integrations</a></li>
-</ol>
-
-<p>In short: Semantic Scholar API is the only mandatory key. Everything else is optional. Use dry run mode to preview results without saving.</p>
-
-<p>For a transparent look at the code and a vibe coding manual, see the GitHub repository: <a href="https://github.com/JiayiYYY/Wise-Waffle" target="_blank">github.com/JiayiYYY/Wise-Waffle</a></p>
-
 </div>
 """, unsafe_allow_html=True)
 
