@@ -181,6 +181,8 @@ def render_paper_card(p):
     journal     = p.get("journal", "")
     pub_date    = p.get("pub_date", "") or p.get("year", "")
     cls         = tag_color(tag)
+    score       = p.get("relevance_score")
+    score_html  = f'<span class="paper-tag" style="background:#e0f2e9;color:#1a7a3a">★ {score}/10</span>' if score is not None else ""
 
     st.markdown(f"""
     <div class="paper-card">
@@ -188,14 +190,19 @@ def render_paper_card(p):
         <div class="paper-meta">{authors_str} &nbsp;·&nbsp; {journal} &nbsp;·&nbsp; {pub_date}</div>
         <span class="paper-tag {cls}">{tier_label(tag)}</span>
         <span class="paper-tag">{topic_display(tag)}</span>
+        {score_html}
         {"<span class='paper-tag'>" + doi + "</span>" if doi else ""}
     </div>
     """, unsafe_allow_html=True)
     abstract = p.get("abstract", "")
-    if abstract:
+    reason   = p.get("relevance_reason", "")
+    if abstract or reason:
         with st.expander("Abstract", expanded=False):
-            st.markdown(f'<p class="abstract-text">{abstract[:800]}{"…" if len(abstract) > 800 else ""}</p>',
-                        unsafe_allow_html=True)
+            if reason:
+                st.markdown(f'<p style="font-size:0.78rem;color:#666;margin-bottom:0.5rem"><em>Relevance: {reason}</em></p>', unsafe_allow_html=True)
+            if abstract:
+                st.markdown(f'<p class="abstract-text">{abstract[:800]}{"…" if len(abstract) > 800 else ""}</p>',
+                            unsafe_allow_html=True)
 
 COLLECTION_KEY_LABELS = {
     "tier1:ai_fairness_decolonial":          "Core — AI Fairness & Decolonial",
@@ -500,6 +507,15 @@ if run_btn:
             if mode == "all":
                 all_papers = pf.deduplicate(all_papers)
 
+            if research_focus_input.strip():
+                if anthropic_key:
+                    log_lines.append(f"\n── Scoring {len(all_papers)} papers with Claude ──"); update_log()
+                    all_papers = pf.score_papers(all_papers, research_focus_input.strip(), api_key=anthropic_key)
+                    log_lines.append(f"{len(all_papers)} papers after scoring"); update_log()
+                    st.session_state["results"] = all_papers
+                else:
+                    log_lines.append("[relevance] Anthropic API key not set — skipping scoring"); update_log()
+
             if not dry_run and target != "view":
                 all_papers = pf.filter_new(all_papers)
                 log_lines.append(f"\n{len(all_papers)} new papers (after dedup with history)")
@@ -576,9 +592,9 @@ if results:
 
     sc1, sc2 = st.columns([1, 4])
     with sc1:
-        sort_by = st.selectbox("Sort by", ["date_desc", "date_asc", "journal"],
-            format_func=lambda x: {"date_desc": "Newest first",
-                                    "date_asc": "Oldest first", "journal": "Journal A–Z"}[x])
+        sort_by = st.selectbox("Sort by", ["date_desc", "date_asc", "journal", "score_desc"],
+            format_func=lambda x: {"date_desc": "Newest first", "date_asc": "Oldest first",
+                                    "journal": "Journal A–Z", "score_desc": "Score (high → low)"}[x])
 
     filtered = [p for p in results
                 if pf._get_tier(p["tag"]) in tier_filter
@@ -595,6 +611,8 @@ if results:
         filtered = sorted(filtered, key=lambda p: p.get("pub_date", "") or p.get("year", ""), reverse=True)
     elif sort_by == "date_asc":
         filtered = sorted(filtered, key=lambda p: p.get("pub_date", "") or p.get("year", ""))
+    elif sort_by == "score_desc":
+        filtered = sorted(filtered, key=lambda p: p.get("relevance_score") if p.get("relevance_score") is not None else -1, reverse=True)
     else:
         filtered = sorted(filtered, key=lambda p: p.get("journal", "").lower())
 
