@@ -215,11 +215,7 @@ def render_paper_card(p):
 def _render_network(p, s2_key=""):
     _NO_DATA = "No citation data available — this paper may not be indexed in OpenAlex yet."
 
-    if s2_key:
-        pf.S2_HEADERS = {"x-api-key": s2_key}
-
-    doi      = p.get("doi", "")
-    paper_id = p.get("s2id") or doi
+    doi = p.get("doi", "")
 
     if not doi:
         st.info(_NO_DATA)
@@ -239,12 +235,6 @@ def _render_network(p, s2_key=""):
 
     refs = data.get("references") or []
     cits = data.get("citations")  or []
-
-    s2_cache_key = f"{pk}__s2_related"
-    if paper_id and s2_cache_key not in cache:
-        with st.spinner("Fetching related papers from Semantic Scholar…"):
-            cache[s2_cache_key] = pf.fetch_s2_related(paper_id)
-    s2_related = cache.get(s2_cache_key) or [] if paper_id else None
 
     def _to_rows(items):
         rows = []
@@ -277,13 +267,6 @@ def _render_network(p, s2_key=""):
         _show_table(cits)
     else:
         st.caption("No citing papers indexed yet — this paper may be too recent.")
-
-    if s2_related is not None:
-        st.markdown(f"**Related Papers — via Semantic Scholar ({len(s2_related)})**")
-        if s2_related:
-            _show_table(s2_related)
-        else:
-            st.caption("No related papers found.")
 
 COLLECTION_KEY_LABELS = {
     "tier1:ai_fairness_decolonial":          "Core — AI Fairness & Decolonial",
