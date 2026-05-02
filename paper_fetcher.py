@@ -169,7 +169,7 @@ def normalize(paper, tag=""):
         "doi":      doi,
         "url":      paper.get("url", "") or pdf_url,
         "tag":      tag,
-        "paperId":  paper.get("paperId", ""),
+        "s2id":     paper.get("paperId", ""),
     }
 
 def deduplicate(papers):
@@ -767,13 +767,27 @@ def fetch_openalex_network(doi, ref_limit=40, cit_limit=20):
 
 
 def fetch_s2_related(paper_id):
-    """Return recommended papers for an S2 paper ID via the S2 recommendations endpoint."""
+    """Return recommended papers via the S2 recommendations endpoint.
+
+    paper_id may be an S2 paperId or a DOI string (contains '/' or starts with '10.').
+    DOIs are resolved to an S2 paperId before calling recommendations.
+    """
     if not paper_id:
         return []
+
+    # Resolve DOI → S2 paperId if needed
+    if "/" in paper_id or paper_id.startswith("10."):
+        doi_str  = paper_id.lstrip("/")
+        resolved = _request("GET", f"{S2_BASE}/paper/DOI:{doi_str}",
+                             params={"fields": "paperId"})
+        if not resolved or not resolved.get("paperId"):
+            print(f"[s2 related] could not resolve DOI to S2 paperId: {doi_str}")
+            return []
+        paper_id = resolved["paperId"]
+        print(f"[s2 related] resolved to paperId: {paper_id}")
+
     url  = f"{S2_BASE}/paper/{paper_id}/recommendations"
-    print(f"[s2 related] GET {url}")
     data = _request("GET", url, params={"fields": "title,authors,year,externalIds"})
-    print(f"[s2 related] response keys: {list(data.keys()) if data else None}")
     if not data:
         return []
     papers = data.get("recommendedPapers") or data.get("data") or []

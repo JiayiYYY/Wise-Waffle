@@ -219,7 +219,7 @@ def _render_network(p, s2_key=""):
         pf.S2_HEADERS = {"x-api-key": s2_key}
 
     doi      = p.get("doi", "")
-    paper_id = p.get("paperId", "") or (f"DOI:{doi}" if doi else "")
+    paper_id = p.get("s2id") or doi
 
     if not doi:
         st.info(_NO_DATA)
@@ -277,9 +277,6 @@ def _render_network(p, s2_key=""):
         _show_table(cits)
     else:
         st.caption("No citing papers indexed yet — this paper may be too recent.")
-
-    st.write("DEBUG paperId:", paper_id)
-    st.write("DEBUG s2_related raw:", s2_related)
 
     if s2_related is not None:
         st.markdown(f"**Related Papers — via Semantic Scholar ({len(s2_related)})**")
