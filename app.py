@@ -5,6 +5,7 @@ Run with: py -m streamlit run app.py
 
 import builtins
 import json
+import requests
 from datetime import datetime, timedelta
 from pathlib import Path
 from collections import Counter
@@ -231,6 +232,11 @@ def _render_network(p, s2_key=""):
     cache = st.session_state["network_cache"]
 
     st.write("DEBUG DOI:", p.get("doi"))
+
+    url = f"https://api.openalex.org/works/https://doi.org/{doi}"
+    resp = requests.get(url, headers={"User-Agent": "WiseWaffle/1.0 (mailto:jiayi.yan0124@gmail.com)"})
+    st.write("STATUS:", resp.status_code)
+    st.write("KEYS:", list(resp.json().keys()) if resp.status_code == 200 else resp.text[:300])
 
     if pk not in cache:
         with st.spinner("Fetching citation network from OpenAlex…"):
