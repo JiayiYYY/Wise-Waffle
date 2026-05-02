@@ -257,11 +257,12 @@ with st.sidebar:
     st.markdown("### API Keys")
     if is_host:
         if st.button("⚡ Fill my credentials"):
-            st.session_state["s2_key_input"]     = host_secrets.get("s2_key", "")
-            st.session_state["zotero_id_input"]  = host_secrets.get("zotero_id", "")
-            st.session_state["zotero_key_input"] = host_secrets.get("zotero_key", "")
-            st.session_state["notion_tok_input"] = host_secrets.get("notion_tok", "")
-            st.session_state["notion_db_input"]  = host_secrets.get("notion_db", "")
+            st.session_state["s2_key_input"]        = host_secrets.get("s2_key", "")
+            st.session_state["zotero_id_input"]     = host_secrets.get("zotero_id", "")
+            st.session_state["zotero_key_input"]    = host_secrets.get("zotero_key", "")
+            st.session_state["notion_tok_input"]    = host_secrets.get("notion_tok", "")
+            st.session_state["notion_db_input"]     = host_secrets.get("notion_db", "")
+            st.session_state["anthropic_key_input"] = host_secrets.get("anthropic_key", "")
             for k in COLLECTION_KEY_LABELS:
                 st.session_state[f"coll_{k}"] = host_colls.get(k, "")
 
@@ -270,8 +271,9 @@ with st.sidebar:
     zotero_key = st.text_input("Zotero API Key",           type="password", key="zotero_key_input")
     notion_tok = st.text_input("Notion Token",             type="password", key="notion_tok_input", placeholder="secret_…")
     notion_db  = st.text_input("Notion Database ID",                        key="notion_db_input",  placeholder="32-char ID")
-    _ant_cfg   = (load_json_safe(CONFIG_PATH) or {}).get("anthropic") or {}
-    st.session_state.setdefault("anthropic_key_input", _ant_cfg.get("api_key", ""))
+    if "anthropic_key_input" not in st.session_state:
+        _ant_cfg = (load_json_safe(CONFIG_PATH) or {}).get("anthropic") or {}
+        st.session_state["anthropic_key_input"] = _ant_cfg.get("api_key", "")
     anthropic_key_field = st.text_input("Anthropic API Key", type="password", key="anthropic_key_input", placeholder="sk-ant-…")
 
     # Always read from session state directly to catch prefill
