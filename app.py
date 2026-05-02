@@ -206,11 +206,11 @@ def render_paper_card(p):
     reason   = p.get("relevance_reason", "")
     if abstract or reason:
         with st.expander("Abstract", expanded=False):
-            if reason:
-                st.markdown(f'<p style="font-size:0.78rem;color:#666;margin-bottom:0.5rem"><em>Relevance: {reason}</em></p>', unsafe_allow_html=True)
             if abstract:
                 st.markdown(f'<p class="abstract-text">{abstract[:800]}{"…" if len(abstract) > 800 else ""}</p>',
                             unsafe_allow_html=True)
+            if reason:
+                st.markdown(f'<p style="font-size:0.78rem;color:#666;margin-top:0.5rem;margin-bottom:0"><em>Relevance: {reason}</em></p>', unsafe_allow_html=True)
 
 def _render_network(p, s2_key=""):
     _NO_DATA = "No citation data available — this paper may not be indexed in OpenAlex yet."
