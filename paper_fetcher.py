@@ -419,6 +419,137 @@ def run_journals(since):
     print(f"\n[journals] {len(deduped)} papers after dedup")
     return deduped
 
+# ── Flexible mode pipeline ───────────────────────────────────────────────────
+
+def run_keywords_flexible(keywords, since, max_per_keyword=20):
+    """Search each keyword independently and return deduplicated normalized papers."""
+    collected = []
+    for kw in keywords:
+        kw = kw.strip()
+        if not kw:
+            continue
+        print(f"  keyword: {kw}")
+        papers = search_bulk(kw, since=since, max_results=max_per_keyword)
+        collected.extend(normalize(p, tag="flex:keyword") for p in papers)
+        time.sleep(1.2)
+    deduped = deduplicate(collected)
+    print(f"\n[flex:keywords] {len(deduped)} papers after dedup")
+    return deduped
+
+
+def run_authors_flexible(author_names, since, papers_per_author=15):
+    """Resolve author names to S2 IDs and fetch their recent papers."""
+    names = [n.strip() for n in author_names if n.strip()]
+    if not names:
+        return []
+    print(f"\n[flex:scholars] Resolving {len(names)} scholar IDs…")
+    name_to_id = resolve_author_ids(names)
+    if not name_to_id:
+        return []
+    print(f"\n[flex:scholars] Fetching papers for {len(name_to_id)} scholars…")
+    raw = get_papers_for_authors(list(name_to_id.values()), since=since,
+                                  papers_per_author=papers_per_author)
+    deduped = deduplicate([normalize(p, tag="flex:scholar") for p in raw])
+    print(f"\n[flex:scholars] {len(deduped)} papers after dedup")
+    return deduped
+
+
+def _openalex_source_id_by_name(journal_name):
+    """Return the short OpenAlex source ID (e.g. 'S123456789') for a journal name."""
+    try:
+        r = requests.get(
+            "https://api.openalex.org/sources",
+            params={"search": journal_name, "select": "id,display_name", "per-page": 1},
+            timeout=10,
+        )
+        if r.status_code == 200:
+            hits = r.json().get("results", [])
+            if hits:
+                return hits[0]["id"].split("/")[-1]
+    except Exception:
+        pass
+    return None
+
+
+def _fetch_openalex_by_source_id(journal_name, source_id, since, tag="flex:journal"):
+    """Paginate OpenAlex works for a given source ID and return normalized papers."""
+    all_results, page = [], 1
+    while True:
+        params = {
+            "filter":   f"primary_location.source.id:{source_id},from_publication_date:{since},type:article",
+            "per-page": 100,
+            "page":     page,
+            "select":   "title,authorships,publication_date,publication_year,doi,"
+                        "abstract_inverted_index,primary_location,open_access,id",
+        }
+        try:
+            r = requests.get("https://api.openalex.org/works", params=params, timeout=20)
+        except requests.RequestException as e:
+            print(f"    {journal_name[:50]}: {e}")
+            break
+        if r.status_code != 200:
+            print(f"    {journal_name[:50]}: HTTP {r.status_code}")
+            break
+        data    = r.json()
+        results = data.get("results", [])
+        if not results:
+            break
+        for p in results:
+            authors  = [{"name": (a.get("author") or {}).get("display_name", "")}
+                        for a in p.get("authorships", [])
+                        if (a.get("author") or {}).get("display_name")]
+            doi      = (p.get("doi", "") or "")
+            if doi.startswith("https://doi.org/"):
+                doi = doi[len("https://doi.org/"):]
+            loc      = p.get("primary_location") or {}
+            src      = loc.get("source") or {}
+            landing  = loc.get("landing_page_url", "") or ""
+            oa       = p.get("open_access") or {}
+            pdf      = oa.get("oa_url", "") or ""
+            pub_date = p.get("publication_date", "") or ""
+            if pub_date and pub_date < since:
+                continue
+            all_results.append({
+                "title":           p.get("title", "") or "Untitled",
+                "authors":         authors,
+                "year":            str(p.get("publication_year", "") or ""),
+                "publicationDate": pub_date,
+                "abstract":        _openalex_rebuild_abstract(p.get("abstract_inverted_index")),
+                "venue":           src.get("display_name", "") or journal_name,
+                "externalIds":     {"DOI": doi},
+                "doi":             doi,
+                "url":             landing or pdf or p.get("id", ""),
+                "openAccessPdf":   {"url": pdf} if pdf else None,
+            })
+        print(f"    {journal_name[:50]}: page {page}, {len(all_results)} so far")
+        if len(results) < 100:
+            break
+        page += 1
+        time.sleep(0.8)
+    return [normalize(p, tag=tag) for p in all_results]
+
+
+def run_journals_flexible(journal_names, since):
+    """Sweep journals supplied by name using OpenAlex name lookup."""
+    collected = []
+    print("\n[flex:journals] OpenAlex sweep by name")
+    for name in journal_names:
+        name = name.strip()
+        if not name:
+            continue
+        source_id = _openalex_source_id_by_name(name)
+        if not source_id:
+            print(f"    {name[:50]}: not found in OpenAlex — skipping")
+            continue
+        print(f"    {name[:50]}: found {source_id}")
+        papers = _fetch_openalex_by_source_id(name, source_id, since, tag="flex:journal")
+        collected.extend(papers)
+        time.sleep(0.5)
+    deduped = deduplicate(collected)
+    print(f"\n[flex:journals] {len(deduped)} papers after dedup")
+    return deduped
+
+
 # ── Tier helpers ──────────────────────────────────────────────────────────────
 
 def _get_tier(tag):

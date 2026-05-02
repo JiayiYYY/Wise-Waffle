@@ -154,15 +154,23 @@ def tag_color(tag):
     if tag.startswith("tier1"): return "tag-tier1"
     if tag.startswith("tier2"): return "tag-tier2"
     if tag.startswith("tier5"): return "tag-tier5"
+    if tag.startswith("flex"):  return "paper-tag"
     return "tag-tier3"
 
 def tier_label(tag):
-    if tag.startswith("tier1"): return "Core"
-    if tag.startswith("tier2"): return "Crossover"
-    if tag.startswith("tier5"): return "Journal"
+    if tag.startswith("tier1"):          return "Core"
+    if tag.startswith("tier2"):          return "Crossover"
+    if tag.startswith("tier5"):          return "Journal"
+    if tag.startswith("flex:keyword"):   return "Keyword"
+    if tag.startswith("flex:crossover"): return "Crossover"
+    if tag.startswith("flex:scholar"):   return "Scholar"
+    if tag.startswith("flex:journal"):   return "Journal"
     return "Scholar"
 
 def topic_display(tag):
+    if tag.startswith("flex:"):
+        parts = tag.split(":")
+        return parts[1].capitalize() if len(parts) >= 2 else tag
     key = get_topic_key(tag)
     if key in TOPIC_LABELS: return TOPIC_LABELS[key]
     parts = tag.split(":")
@@ -229,8 +237,8 @@ def _render_network(p, s2_key=""):
         return
 
     center_id = data["center"].get("paperId", doi)
-    refs      = data.get("references", [])
-    cits      = data.get("citations",  [])
+    refs      = data.get("references") or []
+    cits      = data.get("citations")  or []
 
     net = Network(height="480px", width="100%", bgcolor="#fdf8f2",
                   font_color="#1a1a1a", directed=True)
@@ -333,61 +341,365 @@ def build_config(s2_key, zotero_id, zotero_key, notion_tok, notion_db, collectio
     return cfg
 
 # ── Session state ─────────────────────────────────────────────────────────────
-for k, v in {"results": [], "saved_this": 0, "selected_keys": set(), "page": 1,
+for k, v in {"results": [], "saved_this": 0, "selected_keys": set(), "results_page": 1,
              "last_filtered_count": 0, "prefill": False, "log_lines": [],
-             "network_paper_key": None, "network_cache": {}}.items():
+             "network_paper_key": None, "network_cache": {}, "view": "landing"}.items():
     if k not in st.session_state:
         st.session_state[k] = v
 
-# ── Sidebar ───────────────────────────────────────────────────────────────────
-with st.sidebar:
-    st.markdown("## 🧇")
+# ── Landing page ──────────────────────────────────────────────────────────────
+def render_landing():
+    with st.sidebar:
+        st.markdown("## 🧇 Wise Waffle")
+        st.caption("Choose a mode to begin.")
+
+    st.markdown("""
+<div style="text-align:center; padding: 3rem 0 1.5rem 0;">
+    <div style="font-size:3.5rem; animation: bounce 2s ease infinite; display:inline-block;">🧇</div>
+    <h1 style="font-family:Cambria,Georgia,serif; font-size:3.2rem; letter-spacing:-0.02em;
+               background: linear-gradient(135deg, #d63d6e, #f5a623, #2aaa8a);
+               -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+               background-clip: text; margin: 0.3rem 0 0.5rem 0;">
+        Wise Waffle
+    </h1>
+    <p style="color:#9a9490; font-family:'DM Mono',monospace; font-size:0.85rem; letter-spacing:0.12em; text-transform:uppercase;">
+        Academic literature tracker &nbsp;·&nbsp; Semantic Scholar → Zotero & Notion
+    </p>
+</div>
+""", unsafe_allow_html=True)
+
+    col1, col2 = st.columns(2, gap="large")
+
+    with col1:
+        st.markdown("""
+<div style="background:white; border:1px solid var(--blush); border-radius:12px; padding:2rem; min-height:300px;">
+    <h2 style="color:var(--accent); margin-top:0; font-size:1.4rem;">Mode 1 — Preset Pipeline</h2>
+    <p style="color:#555; font-size:0.92rem; line-height:1.7; margin-bottom:1rem;">
+        Runs your saved topic configuration end-to-end. Keywords, scholars, and journals
+        come from <code>topics.json</code> and <code>journals.json</code>. Best for your weekly routine.
+    </p>
+    <ul style="color:#555; font-size:0.85rem; line-height:2; padding-left:1.2rem; margin:0;">
+        <li><span style="color:#d63d6e">●</span> Core keyword search (Tier 1)</li>
+        <li><span style="color:#2aaa8a">●</span> Interdisciplinary crossover (Tier 2)</li>
+        <li><span style="color:#b87c0a">●</span> Tracked scholar papers (Tier 3–4)</li>
+        <li><span style="color:#6b3a8f">●</span> Journal sweeps via OpenAlex (Tier 5)</li>
+    </ul>
+</div>
+""", unsafe_allow_html=True)
+        st.markdown("<div style='height:0.75rem'></div>", unsafe_allow_html=True)
+        if st.button("Enter Mode 1 →", key="go_mode1", use_container_width=True):
+            st.session_state["view"]     = "mode1"
+            st.session_state["results"]  = []
+            st.session_state["log_lines"] = []
+            st.rerun()
+
+    with col2:
+        st.markdown("""
+<div style="background:white; border:1px solid #c8e8de; border-radius:12px; padding:2rem; min-height:300px;">
+    <h2 style="color:var(--teal); margin-top:0; font-size:1.4rem;">Mode 2 — Custom Search</h2>
+    <p style="color:#555; font-size:0.92rem; line-height:1.7; margin-bottom:1rem;">
+        Enter any keywords, scholars, and journals on the fly — no config files needed.
+        Good for one-off sweeps, new topics, or sharing with colleagues.
+    </p>
+    <ul style="color:#555; font-size:0.85rem; line-height:2; padding-left:1.2rem; margin:0;">
+        <li>📝 Any keywords (one per line)</li>
+        <li>🔀 Optional crossover keywords</li>
+        <li>👤 Specific scholars to track</li>
+        <li>📰 Any journals to sweep</li>
+    </ul>
+</div>
+""", unsafe_allow_html=True)
+        st.markdown("<div style='height:0.75rem'></div>", unsafe_allow_html=True)
+        if st.button("Enter Mode 2 →", key="go_mode2", use_container_width=True):
+            st.session_state["view"]     = "mode2"
+            st.session_state["results"]  = []
+            st.session_state["log_lines"] = []
+            st.rerun()
+
+# ── Shared results renderer ───────────────────────────────────────────────────
+def render_results(results, s2_key="", zotero_id="", zotero_key="",
+                   notion_tok="", notion_db="", collection_keys=None, anthropic_key=""):
+    if not results:
+        return
+
     st.divider()
 
-    try:
-        host_secrets = dict(st.secrets["host"]) if "host" in st.secrets else {}
-    except Exception:
-        host_secrets = {}
-    try:
-        host_colls = dict(st.secrets["host_collections"]) if "host_collections" in st.secrets else {}
-    except Exception:
-        host_colls = {}
-    is_host = bool(host_secrets)
+    is_flex = any(p.get("tag", "").startswith("flex:") for p in results)
 
-    st.markdown("### API Keys")
-    if is_host:
-        if st.button("⚡ Fill my credentials"):
-            st.session_state["s2_key_input"]        = host_secrets.get("s2_key", "")
-            st.session_state["zotero_id_input"]     = host_secrets.get("zotero_id", "")
-            st.session_state["zotero_key_input"]    = host_secrets.get("zotero_key", "")
-            st.session_state["notion_tok_input"]    = host_secrets.get("notion_tok", "")
-            st.session_state["notion_db_input"]     = host_secrets.get("notion_db", "")
-            st.session_state["anthropic_key_input"] = host_secrets.get("anthropic_key", "")
-            for k in COLLECTION_KEY_LABELS:
-                st.session_state[f"coll_{k}"] = host_colls.get(k, "")
+    if is_flex:
+        flex_counts = Counter(p.get("tag", "") for p in results)
+        r1, r2, r3, r4 = st.columns(4)
+        with r1: st.markdown(f'<div class="stat-box"><div class="stat-num">{len(results)}</div><div class="stat-label">Papers found</div></div>', unsafe_allow_html=True)
+        with r2: st.markdown(f'<div class="stat-box"><div class="stat-num">{flex_counts.get("flex:keyword", 0) + flex_counts.get("flex:crossover", 0)}</div><div class="stat-label">From keywords</div></div>', unsafe_allow_html=True)
+        with r3: st.markdown(f'<div class="stat-box"><div class="stat-num">{flex_counts.get("flex:scholar", 0)}</div><div class="stat-label">From scholars</div></div>', unsafe_allow_html=True)
+        with r4: st.markdown(f'<div class="stat-box"><div class="stat-num">{flex_counts.get("flex:journal", 0)}</div><div class="stat-label">From journals</div></div>', unsafe_allow_html=True)
+    else:
+        tier_counts = Counter(pf._get_tier(p["tag"]) for p in results)
+        r1, r2, r3, r4, r5 = st.columns(5)
+        with r1: st.markdown(f'<div class="stat-box"><div class="stat-num">{len(results)}</div><div class="stat-label">Papers found</div></div>', unsafe_allow_html=True)
+        with r2: st.markdown(f'<div class="stat-box"><div class="stat-num">{tier_counts.get("tier1",0)}</div><div class="stat-label">Core</div></div>', unsafe_allow_html=True)
+        with r3: st.markdown(f'<div class="stat-box"><div class="stat-num">{tier_counts.get("tier2",0)}</div><div class="stat-label">Crossover</div></div>', unsafe_allow_html=True)
+        with r4: st.markdown(f'<div class="stat-box"><div class="stat-num">{tier_counts.get("tier3",0)}</div><div class="stat-label">Scholars</div></div>', unsafe_allow_html=True)
+        with r5: st.markdown(f'<div class="stat-box"><div class="stat-num">{tier_counts.get("tier5",0)}</div><div class="stat-label">Journals</div></div>', unsafe_allow_html=True)
 
-    s2_key     = st.text_input("Semantic Scholar API Key", type="password", key="s2_key_input",     placeholder="Enter key…")
-    zotero_id  = st.text_input("Zotero Library ID",                         key="zotero_id_input",  placeholder="e.g. 10541129")
-    zotero_key = st.text_input("Zotero API Key",           type="password", key="zotero_key_input")
-    notion_tok = st.text_input("Notion Token",             type="password", key="notion_tok_input", placeholder="secret_…")
-    notion_db  = st.text_input("Notion Database ID",                        key="notion_db_input",  placeholder="32-char ID")
-    anthropic_key_field = st.text_input("Anthropic API Key", type="password", key="anthropic_key_input", placeholder="sk-ant-…")
+    st.markdown("---")
 
-    # Always read from session state directly to catch prefill
-    s2_key        = st.session_state.get("s2_key_input", "")
-    zotero_id     = st.session_state.get("zotero_id_input", "")
-    zotero_key    = st.session_state.get("zotero_key_input", "")
-    notion_tok    = st.session_state.get("notion_tok_input", "")
-    notion_db     = st.session_state.get("notion_db_input", "")
-    anthropic_key = st.session_state.get("anthropic_key_input", "")
+    fc1, fc2, fc3 = st.columns([1.2, 1.5, 2])
 
-    with st.expander("📁 Zotero Collection Keys (optional)"):
-        st.markdown('<p style="font-size:0.75rem;color:#aaa;margin-bottom:0.5rem">8-char key from each collection URL. Leave blank to save to root library.</p>', unsafe_allow_html=True)
-        collection_keys = {}
-        for key, label in COLLECTION_KEY_LABELS.items():
-            collection_keys[key] = st.text_input(label, placeholder="e.g. ABC12345", key=f"coll_{key}")
-    with st.expander("ℹ️ Setup guide"):
-        st.markdown("""
+    if is_flex:
+        all_flex_tags = sorted(set(p.get("tag", "") for p in results))
+        flex_label    = {"flex:keyword": "Keywords", "flex:crossover": "Crossover",
+                         "flex:scholar": "Scholars", "flex:journal": "Journals"}
+        with fc1:
+            source_filter = st.multiselect("Filter by source", all_flex_tags, default=all_flex_tags,
+                format_func=lambda x: flex_label.get(x, x))
+        with fc2:
+            all_journals   = sorted(set(p["journal"] for p in results if p.get("journal")))
+            journal_filter = st.multiselect("Filter by journal", all_journals, default=[],
+                placeholder="All journals…")
+        with fc3:
+            search_filter = st.text_input("Search", placeholder="Filter by title, author, journal…")
+        sc1, _ = st.columns([1, 4])
+        with sc1:
+            sort_by = st.selectbox("Sort by", ["date_desc", "date_asc", "journal", "score_desc"],
+                format_func=lambda x: {"date_desc": "Newest first", "date_asc": "Oldest first",
+                                        "journal": "Journal A–Z", "score_desc": "Score (high → low)"}[x])
+        filtered = [p for p in results if p.get("tag", "") in source_filter]
+    else:
+        all_topic_keys = sorted(set(get_topic_key(p["tag"]) for p in results))
+        topic_options  = {tk: TOPIC_LABELS.get(tk, tk) for tk in all_topic_keys}
+        with fc1:
+            tier_filter = st.multiselect("Filter by tier", ["tier1", "tier2", "tier3", "tier5"],
+                default=["tier1", "tier2", "tier3", "tier5"],
+                format_func=lambda x: {"tier1": "Core", "tier2": "Crossover",
+                                        "tier3": "Scholars", "tier5": "Journals"}[x])
+        with fc2:
+            topic_filter = st.multiselect("Filter by topic", list(topic_options.keys()),
+                default=list(topic_options.keys()),
+                format_func=lambda x: topic_options[x])
+        with fc3:
+            search_filter = st.text_input("Search", placeholder="Filter by title, author, journal…")
+        all_journals   = sorted(set(p["journal"] for p in results if p.get("journal")))
+        journal_filter = st.multiselect("Filter by journal", all_journals, default=[],
+                                        placeholder="All journals (select to narrow down…)")
+        sc1, sc2 = st.columns([1, 4])
+        with sc1:
+            sort_by = st.selectbox("Sort by", ["date_desc", "date_asc", "journal", "score_desc"],
+                format_func=lambda x: {"date_desc": "Newest first", "date_asc": "Oldest first",
+                                        "journal": "Journal A–Z", "score_desc": "Score (high → low)"}[x])
+        filtered = [p for p in results
+                    if pf._get_tier(p["tag"]) in tier_filter
+                    and get_topic_key(p["tag"]) in topic_filter]
+
+    if journal_filter:
+        filtered = [p for p in filtered if p.get("journal") in journal_filter]
+    if search_filter:
+        q = search_filter.lower()
+        filtered = [p for p in filtered
+                    if q in p.get("title", "").lower()
+                    or q in " ".join(p.get("authors", [])).lower()
+                    or q in p.get("journal", "").lower()]
+    if sort_by == "date_desc":
+        filtered = sorted(filtered, key=lambda p: p.get("pub_date", "") or p.get("year", ""), reverse=True)
+    elif sort_by == "date_asc":
+        filtered = sorted(filtered, key=lambda p: p.get("pub_date", "") or p.get("year", ""))
+    elif sort_by == "score_desc":
+        filtered = sorted(filtered, key=lambda p: p.get("relevance_score") if p.get("relevance_score") is not None else -1, reverse=True)
+    else:
+        filtered = sorted(filtered, key=lambda p: p.get("journal", "").lower())
+
+    with st.expander("📊 Results breakdown", expanded=True):
+        col_chart, col_journals_chart = st.columns(2)
+        with col_chart:
+            st.markdown("**Papers per topic** *(filtered)*")
+            ftc = Counter(get_topic_key(p["tag"]) for p in filtered)
+            sorted_t = sorted(ftc.items(), key=lambda x: -x[1])
+            max_n = sorted_t[0][1] if sorted_t else 1
+            for tk, n in sorted_t:
+                label = TOPIC_LABELS.get(tk, tk)
+                bar_w = int((n / max_n) * 100)
+                if tk.startswith("tier1"):   color = "#d63d6e"
+                elif tk.startswith("tier2"): color = "#2aaa8a"
+                elif tk.startswith("tier5"): color = "#6b3a8f"
+                elif tk.startswith("flex"):  color = "#4a90d9"
+                else:                        color = "#b87c0a"
+                st.markdown(f"""<div style="margin-bottom:8px">
+                  <div style="display:flex;justify-content:space-between;margin-bottom:2px">
+                    <span style="font-size:0.78rem;color:#444">{label}</span>
+                    <span style="font-family:'DM Mono',monospace;font-size:0.72rem;color:#8a8480">{n}</span>
+                  </div>
+                  <div style="background:#ede8e0;border-radius:2px;height:5px">
+                    <div style="background:{color};width:{bar_w}%;height:5px;border-radius:2px"></div>
+                  </div></div>""", unsafe_allow_html=True)
+        with col_journals_chart:
+            st.markdown("**Top journals** *(filtered)*")
+            jlist = [p["journal"] for p in filtered if p.get("journal")]
+            if jlist:
+                top_j = Counter(jlist).most_common(8)
+                max_j = top_j[0][1]
+                for j, n in top_j:
+                    bar_w = int((n / max_j) * 100)
+                    st.markdown(f"""<div style="margin-bottom:8px">
+                      <div style="display:flex;justify-content:space-between;margin-bottom:2px">
+                        <span style="font-size:0.78rem;color:#444">{j[:40]}</span>
+                        <span style="font-family:'DM Mono',monospace;font-size:0.72rem;color:#8a8480">{n}</span>
+                      </div>
+                      <div style="background:#ede8e0;border-radius:2px;height:5px">
+                        <div style="background:#d63d6e;width:{bar_w}%;height:5px;border-radius:2px"></div>
+                      </div></div>""", unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    PAGE_SIZE   = 20
+    total_pages = max(1, (len(filtered) + PAGE_SIZE - 1) // PAGE_SIZE)
+    if st.session_state.get("last_filtered_count") != len(filtered):
+        st.session_state["results_page"]       = 1
+        st.session_state["last_filtered_count"] = len(filtered)
+    page        = st.session_state["results_page"]
+    start       = (page - 1) * PAGE_SIZE
+    page_papers = filtered[start:start + PAGE_SIZE]
+
+    st.markdown(
+        f"### Results &nbsp;<small style='color:#9a9490;font-size:0.8rem;font-family:DM Mono,monospace'>"
+        f"{len(filtered)} papers · page {page}/{total_pages}</small>",
+        unsafe_allow_html=True)
+
+    sel1, sel2, sel3 = st.columns([1, 1, 5])
+    with sel1:
+        if st.button("☑ Select page"):
+            for p in page_papers:
+                st.session_state["selected_keys"].add(paper_key(p))
+    with sel2:
+        if st.button("☐ Clear all"):
+            st.session_state["selected_keys"] = set()
+
+    n_selected = len(st.session_state["selected_keys"])
+    if n_selected:
+        st.markdown(f"**{n_selected} paper{'s' if n_selected > 1 else ''} selected**")
+
+    for p in page_papers:
+        pk      = paper_key(p)
+        checked = pk in st.session_state["selected_keys"]
+        col_chk, col_card = st.columns([0.04, 0.96])
+        with col_chk:
+            new_val = st.checkbox("select", value=checked, key=f"chk_{pk[:60]}", label_visibility="hidden")
+            if new_val:
+                st.session_state["selected_keys"].add(pk)
+            else:
+                st.session_state["selected_keys"].discard(pk)
+        with col_card:
+            render_paper_card(p)
+        if p.get("doi"):
+            is_active = st.session_state.get("network_paper_key") == pk
+            if st.button("▲ Hide Network" if is_active else "🔗 Citation Network",
+                         key=f"net_btn_{pk[:50]}"):
+                st.session_state["network_paper_key"] = None if is_active else pk
+            if st.session_state.get("network_paper_key") == pk:
+                _render_network(p, s2_key)
+
+    if total_pages > 1:
+        pc1, pc2, pc3, pc4, pc5 = st.columns([1, 1, 2, 1, 1])
+        with pc1:
+            if st.button("⟪ First") and page > 1:
+                st.session_state["results_page"] = 1; st.rerun()
+        with pc2:
+            if st.button("← Prev") and page > 1:
+                st.session_state["results_page"] = page - 1; st.rerun()
+        with pc3:
+            st.markdown(f'<div style="text-align:center;font-family:DM Mono,monospace;font-size:0.8rem;'
+                        f'color:#9a9490;padding-top:0.5rem">Page {page} of {total_pages}</div>',
+                        unsafe_allow_html=True)
+        with pc4:
+            if st.button("Next →") and page < total_pages:
+                st.session_state["results_page"] = page + 1; st.rerun()
+        with pc5:
+            if st.button("Last ⟫") and page < total_pages:
+                st.session_state["results_page"] = total_pages; st.rerun()
+
+    st.markdown("---")
+    selected_papers = [p for p in filtered if paper_key(p) in st.session_state["selected_keys"]]
+
+    if selected_papers:
+        st.markdown(f"### Save {len(selected_papers)} selected paper{'s' if len(selected_papers) > 1 else ''}")
+        config_now = build_config(s2_key, zotero_id, zotero_key, notion_tok, notion_db, collection_keys, anthropic_key)
+        sv1, sv2, sv3 = st.columns([1, 1, 4])
+        with sv1:
+            if st.button("💾 Save to Zotero", disabled=not (zotero_id and zotero_key)):
+                try:
+                    pf.S2_HEADERS = {"x-api-key": s2_key} if s2_key else {}
+                    pf.save_to_zotero(selected_papers, config_now)
+                    pf.record_saved(selected_papers)
+                    st.session_state["selected_keys"] = set()
+                    st.success(f"✓ {len(selected_papers)} papers saved to Zotero.")
+                except Exception as e:
+                    st.error(f"Zotero save failed: {e}")
+        with sv2:
+            if st.button("📝 Save to Notion", disabled=not (notion_tok and notion_db)):
+                try:
+                    pf.S2_HEADERS = {"x-api-key": s2_key} if s2_key else {}
+                    pf.save_to_notion(selected_papers, config_now)
+                    pf.record_saved(selected_papers)
+                    st.session_state["selected_keys"] = set()
+                    st.success(f"✓ {len(selected_papers)} papers saved to Notion.")
+                except Exception as e:
+                    st.error(f"Notion save failed: {e}")
+    elif st.session_state["saved_this"] > 0:
+        st.success(f"✓ {st.session_state['saved_this']} papers auto-saved.")
+
+# ── Mode 1 ────────────────────────────────────────────────────────────────────
+def render_mode1():
+    with st.sidebar:
+        if st.button("← Home", key="m1_back"):
+            st.session_state["view"]      = "landing"
+            st.session_state["results"]   = []
+            st.session_state["log_lines"] = []
+            st.rerun()
+        st.markdown("## 🧇")
+        st.divider()
+
+        try:
+            host_secrets = dict(st.secrets["host"]) if "host" in st.secrets else {}
+        except Exception:
+            host_secrets = {}
+        try:
+            host_colls = dict(st.secrets["host_collections"]) if "host_collections" in st.secrets else {}
+        except Exception:
+            host_colls = {}
+        is_host = bool(host_secrets)
+
+        st.markdown("### API Keys")
+        if is_host:
+            if st.button("⚡ Fill my credentials"):
+                st.session_state["s2_key_input"]        = host_secrets.get("s2_key", "")
+                st.session_state["zotero_id_input"]     = host_secrets.get("zotero_id", "")
+                st.session_state["zotero_key_input"]    = host_secrets.get("zotero_key", "")
+                st.session_state["notion_tok_input"]    = host_secrets.get("notion_tok", "")
+                st.session_state["notion_db_input"]     = host_secrets.get("notion_db", "")
+                st.session_state["anthropic_key_input"] = host_secrets.get("anthropic_key", "")
+                for k in COLLECTION_KEY_LABELS:
+                    st.session_state[f"coll_{k}"] = host_colls.get(k, "")
+
+        st.text_input("Semantic Scholar API Key", type="password", key="s2_key_input",     placeholder="Enter key…")
+        st.text_input("Zotero Library ID",                         key="zotero_id_input",  placeholder="e.g. 10541129")
+        st.text_input("Zotero API Key",           type="password", key="zotero_key_input")
+        st.text_input("Notion Token",             type="password", key="notion_tok_input", placeholder="secret_…")
+        st.text_input("Notion Database ID",                        key="notion_db_input",  placeholder="32-char ID")
+        st.text_input("Anthropic API Key",        type="password", key="anthropic_key_input", placeholder="sk-ant-…")
+
+        s2_key        = st.session_state.get("s2_key_input", "")
+        zotero_id     = st.session_state.get("zotero_id_input", "")
+        zotero_key    = st.session_state.get("zotero_key_input", "")
+        notion_tok    = st.session_state.get("notion_tok_input", "")
+        notion_db     = st.session_state.get("notion_db_input", "")
+        anthropic_key = st.session_state.get("anthropic_key_input", "")
+
+        with st.expander("📁 Zotero Collection Keys (optional)"):
+            st.markdown('<p style="font-size:0.75rem;color:#aaa;margin-bottom:0.5rem">8-char key from each collection URL. Leave blank to save to root library.</p>', unsafe_allow_html=True)
+            collection_keys = {}
+            for key, label in COLLECTION_KEY_LABELS.items():
+                collection_keys[key] = st.text_input(label, placeholder="e.g. ABC12345", key=f"coll_{key}")
+        with st.expander("ℹ️ Setup guide"):
+            st.markdown("""
 **Semantic Scholar**
 Get a free API key at [semanticscholar.org/product/api](https://www.semanticscholar.org/product/api). Required to run any search.
 
@@ -406,45 +718,45 @@ Get a free API key at [semanticscholar.org/product/api](https://www.semanticscho
 4. Your database needs these columns: Title (Title), Authors, Year, Journal, DOI, Abstract (all Text), URL (URL), Source (Text), Tier (Select)
 
 """)
-        
-    st.divider()
-    st.markdown("### Search Settings")
-    mode = st.selectbox("Mode", ["all", "search", "authors", "journals"],
-        format_func=lambda x: {"all": "All (keywords + scholars + journals)",
-                                "search": "Keywords only", "authors": "Scholars only",
-                                "journals": "Journals only"}[x])
-    target = st.selectbox("Save to", ["view", "both", "zotero", "notion"],
-        format_func=lambda x: {"view": "View only (no save)", "both": "Zotero + Notion",
-                                "zotero": "Zotero only", "notion": "Notion only"}[x])
-    days_back = st.slider("Look back (days)", 30, 365, 365, step=30)
-    dry_run   = st.checkbox("Dry run (preview, don't save)", value=True)
 
-    st.markdown("### Research Focus")
-    _cfg_rf = load_json_safe(CONFIG_PATH) or {}
-    research_focus_input = st.text_area(
-        "Describe your research interests — used by Claude to score paper relevance",
-        value=_cfg_rf.get("research_focus", ""),
-        height=110,
-        placeholder="e.g. political communication, misinformation, social media and democracy",
-        key="research_focus_input",
-    )
-    if st.button("Save focus"):
-        _cfg_save = load_json_safe(CONFIG_PATH) or {}
-        _cfg_save["research_focus"] = research_focus_input.strip()
-        with open(CONFIG_PATH, "w", encoding="utf-8") as _f:
-            json.dump(_cfg_save, _f, ensure_ascii=False, indent=2)
-        st.success("Research focus saved.")
+        st.divider()
+        st.markdown("### Search Settings")
+        mode = st.selectbox("Mode", ["all", "search", "authors", "journals"],
+            format_func=lambda x: {"all": "All (keywords + scholars + journals)",
+                                    "search": "Keywords only", "authors": "Scholars only",
+                                    "journals": "Journals only"}[x])
+        target = st.selectbox("Save to", ["view", "both", "zotero", "notion"],
+            format_func=lambda x: {"view": "View only (no save)", "both": "Zotero + Notion",
+                                    "zotero": "Zotero only", "notion": "Notion only"}[x])
+        days_back = st.slider("Look back (days)", 30, 365, 365, step=30)
+        dry_run   = st.checkbox("Dry run (preview, don't save)", value=True)
 
-    st.divider()
-    st.markdown("### Stats")
-    st.markdown(f'<div class="stat-box"><div class="stat-num">{saved_count()}</div>'
-                f'<div class="stat-label">Saved all-time</div></div>', unsafe_allow_html=True)
-    if st.button("🗑 Reset history"):
-        if SAVED_PATH.exists(): SAVED_PATH.unlink()
-        st.success("History cleared.")
+        st.markdown("### Research Focus")
+        _cfg_rf = load_json_safe(CONFIG_PATH) or {}
+        research_focus_input = st.text_area(
+            "Describe your research interests — used by Claude to score paper relevance",
+            value=_cfg_rf.get("research_focus", ""),
+            height=110,
+            placeholder="e.g. political communication, misinformation, social media and democracy",
+            key="research_focus_input",
+        )
+        if st.button("Save focus"):
+            _cfg_save = load_json_safe(CONFIG_PATH) or {}
+            _cfg_save["research_focus"] = research_focus_input.strip()
+            with open(CONFIG_PATH, "w", encoding="utf-8") as _f:
+                json.dump(_cfg_save, _f, ensure_ascii=False, indent=2)
+            st.success("Research focus saved.")
 
-# ── Header ────────────────────────────────────────────────────────────────────
-st.markdown("""
+        st.divider()
+        st.markdown("### Stats")
+        st.markdown(f'<div class="stat-box"><div class="stat-num">{saved_count()}</div>'
+                    f'<div class="stat-label">Saved all-time</div></div>', unsafe_allow_html=True)
+        if st.button("🗑 Reset history"):
+            if SAVED_PATH.exists(): SAVED_PATH.unlink()
+            st.success("History cleared.")
+
+    # ── Header ──
+    st.markdown("""
 <div style="text-align:center; padding: 2.5rem 0 1rem 0;">
     <div style="font-size:3.5rem; animation: bounce 2s ease infinite; display:inline-block;">🧇</div>
     <h1 style="font-family:Cambria,Georgia,serif; font-size:3.2rem; letter-spacing:-0.02em;
@@ -459,14 +771,13 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ── Introduction ──────────────────────────────────────────────────────────────
-with st.expander("👋 What is this?", expanded=True):
-    st.markdown("""
+    with st.expander("👋 What is this?", expanded=True):
+        st.markdown("""
 <div class="intro-box">
 
 Hi there. I'm a wandering waffle in the Netherlands — don't ask me why waffle, I don't even particularly like waffles. Or stroopwafels.
 
-I'm a researcher in communication science, with the followling interests: 
+I'm a researcher in communication science, with the followling interests:
 
 <span class="tier-pill" style="background:#fde0ea;color:#d63d6e">AI Fairness & Decolonial perspectives</span>
 <span class="tier-pill" style="background:#fde0ea;color:#d63d6e">Sexual Behavior & Youth</span>
@@ -517,325 +828,395 @@ Hit **▶ Run** to fetch papers, preview results here, then tick what you want a
 </div>
 """, unsafe_allow_html=True)
 
-    with st.expander("📋 Journals we search (Tier 5)"):
-        topics_data = load_json_safe(TOPICS_PATH) or {}
-        tier5 = topics_data.get("tier5_journals", {})
-        for group, journals in tier5.items():
-            if group.startswith("_"):
-                continue
-            label = JOURNAL_GROUPS.get(group, group)
-            st.markdown(f"**{label}**")
-            cols = st.columns(3)
-            for i, j in enumerate(journals):
-                cols[i % 3].markdown(f"· {j}")
-            st.markdown("")
+        with st.expander("📋 Journals we search (Tier 5)"):
+            topics_data = load_json_safe(TOPICS_PATH) or {}
+            tier5 = topics_data.get("tier5_journals", {})
+            for group, journals in tier5.items():
+                if group.startswith("_"):
+                    continue
+                label = JOURNAL_GROUPS.get(group, group)
+                st.markdown(f"**{label}**")
+                cols = st.columns(3)
+                for i, j in enumerate(journals):
+                    cols[i % 3].markdown(f"· {j}")
+                st.markdown("")
 
-st.divider()
-
-# ── Config status ─────────────────────────────────────────────────────────────
-config_ok = bool(s2_key)
-col_a, col_b, col_c = st.columns(3)
-with col_a: st.markdown(f'<div class="stat-box"><div class="stat-num">{"✓" if s2_key else "✗"}</div><div class="stat-label">S2 API Key</div></div>', unsafe_allow_html=True)
-with col_b: st.markdown(f'<div class="stat-box"><div class="stat-num">{"✓" if zotero_id and zotero_key else "–"}</div><div class="stat-label">Zotero</div></div>', unsafe_allow_html=True)
-with col_c: st.markdown(f'<div class="stat-box"><div class="stat-num">{"✓" if notion_tok and notion_db else "–"}</div><div class="stat-label">Notion</div></div>', unsafe_allow_html=True)
-
-st.divider()
-
-col_run, col_info = st.columns([1, 3])
-with col_run:
-    run_btn = st.button("▶ Run", disabled=not config_ok)
-with col_info:
-    if not config_ok:
-        st.warning("Enter your Semantic Scholar API key in the sidebar to start.")
-    elif dry_run:
-        st.info("Dry run — results shown but nothing saved.")
-
-# ── Run ───────────────────────────────────────────────────────────────────────
-if run_btn:
-    st.session_state["results"]       = []
-    st.session_state["saved_this"]    = 0
-    st.session_state["selected_keys"] = set()
-    st.session_state["page"]          = 1
-    st.session_state["log_lines"]     = []
-
-    config = build_config(s2_key, zotero_id, zotero_key, notion_tok, notion_db, collection_keys, anthropic_key)
-    topics = load_json_safe(TOPICS_PATH) or {}
-    since  = (datetime.today() - timedelta(days=days_back)).strftime("%Y-%m-%d")
-    pf.S2_HEADERS = {"x-api-key": s2_key} if s2_key else {}
-
-    st.markdown("### Progress")
-    log_container = st.empty()
-    log_lines = st.session_state["log_lines"]
-    log_lines.append(f"Search range: {since} → today")
-
-    def update_log():
-        log_text = "\n".join(log_lines[-80:])
-        log_container.markdown(
-            f'<div style="background:#0f0e0d;color:#a8d5a2;font-family:DM Mono,monospace;'
-            f'font-size:0.75rem;padding:1rem;border-radius:4px;height:220px;overflow-y:auto;">'
-            f'<pre>{log_text}</pre></div>', unsafe_allow_html=True)
-
-    original_print = builtins.print
-    def patched_print(*args, **kwargs):
-        log_lines.append(" ".join(str(a) for a in args))
-        update_log()
-        original_print(*args, **kwargs)
-    builtins.print = patched_print
-
-    try:
-        with st.spinner("Fetching papers…"):
-            all_papers = []
-            if mode in ("search", "all"):
-                log_lines.append("\n── Tier 1 & 2: Keyword search ──"); update_log()
-                all_papers.extend(pf.run_search(topics, since))
-            if mode in ("authors", "all"):
-                log_lines.append("\n── Tier 3 & 4: Scholar tracking ──"); update_log()
-                all_papers.extend(pf.run_authors(topics, since))
-            if mode in ("journals", "all"):
-                log_lines.append("\n── Tier 5: Journal sweep ──"); update_log()
-                all_papers.extend(pf.run_journals(since))
-            if mode == "all":
-                all_papers = pf.deduplicate(all_papers)
-
-            if research_focus_input.strip():
-                if anthropic_key:
-                    log_lines.append(f"\n── Scoring {len(all_papers)} papers with Claude ──"); update_log()
-                    all_papers = pf.score_papers(all_papers, research_focus_input.strip(), api_key=anthropic_key)
-                    log_lines.append(f"{len(all_papers)} papers after scoring"); update_log()
-                    st.session_state["results"] = all_papers
-                else:
-                    log_lines.append("[relevance] Anthropic API key not set — skipping scoring"); update_log()
-
-            if not dry_run and target != "view":
-                all_papers = pf.filter_new(all_papers)
-                log_lines.append(f"\n{len(all_papers)} new papers (after dedup with history)")
-            else:
-                log_lines.append(f"\n{len(all_papers)} papers found (dry run / view mode)")
-            update_log()
-
-            st.session_state["results"] = all_papers
-
-            if all_papers and not dry_run and target != "view":
-                if target in ("zotero", "both") and config.get("zotero"):
-                    log_lines.append("\n── Saving to Zotero ──"); update_log()
-                    pf.save_to_zotero(all_papers, config)
-                if target in ("notion", "both") and config.get("notion"):
-                    log_lines.append("\n── Saving to Notion ──"); update_log()
-                    pf.save_to_notion(all_papers, config)
-                pf.record_saved(all_papers)
-                pf.clear_cache()
-                st.session_state["saved_this"] = len(all_papers)
-            else:
-                log_lines.append("Results ready — select papers below to save manually.")
-
-            log_lines.append("\n✓ Done."); update_log()
-
-    except Exception as e:
-        log_lines.append(f"\n[ERROR] {type(e).__name__}: {e}"); update_log()
-    finally:
-        builtins.print = original_print
-
-# ── Last run log ──────────────────────────────────────────────────────────────
-if st.session_state.get("log_lines"):
-    with st.expander("📋 Last run log", expanded=False):
-        log_text = "\n".join(st.session_state["log_lines"])
-        st.markdown(
-            f'<div style="background:#0f0e0d;color:#a8d5a2;font-family:DM Mono,monospace;'
-            f'font-size:0.75rem;padding:1rem;border-radius:4px;max-height:400px;overflow-y:auto;">'
-            f'<pre>{log_text}</pre></div>', unsafe_allow_html=True)
-
-# ── Results ───────────────────────────────────────────────────────────────────
-results = st.session_state.get("results", [])
-
-if results:
     st.divider()
 
-    tier_counts = Counter(pf._get_tier(p["tag"]) for p in results)
-    r1, r2, r3, r4, r5 = st.columns(5)
-    with r1: st.markdown(f'<div class="stat-box"><div class="stat-num">{len(results)}</div><div class="stat-label">Papers found</div></div>', unsafe_allow_html=True)
-    with r2: st.markdown(f'<div class="stat-box"><div class="stat-num">{tier_counts.get("tier1",0)}</div><div class="stat-label">Core</div></div>', unsafe_allow_html=True)
-    with r3: st.markdown(f'<div class="stat-box"><div class="stat-num">{tier_counts.get("tier2",0)}</div><div class="stat-label">Crossover</div></div>', unsafe_allow_html=True)
-    with r4: st.markdown(f'<div class="stat-box"><div class="stat-num">{tier_counts.get("tier3",0)}</div><div class="stat-label">Scholars</div></div>', unsafe_allow_html=True)
-    with r5: st.markdown(f'<div class="stat-box"><div class="stat-num">{tier_counts.get("tier5",0)}</div><div class="stat-label">Journals</div></div>', unsafe_allow_html=True)
+    config_ok = bool(s2_key)
+    col_a, col_b, col_c = st.columns(3)
+    with col_a: st.markdown(f'<div class="stat-box"><div class="stat-num">{"✓" if s2_key else "✗"}</div><div class="stat-label">S2 API Key</div></div>', unsafe_allow_html=True)
+    with col_b: st.markdown(f'<div class="stat-box"><div class="stat-num">{"✓" if zotero_id and zotero_key else "–"}</div><div class="stat-label">Zotero</div></div>', unsafe_allow_html=True)
+    with col_c: st.markdown(f'<div class="stat-box"><div class="stat-num">{"✓" if notion_tok and notion_db else "–"}</div><div class="stat-label">Notion</div></div>', unsafe_allow_html=True)
 
-    st.markdown("---")
+    st.divider()
 
-    all_topic_keys = sorted(set(get_topic_key(p["tag"]) for p in results))
-    topic_options  = {tk: TOPIC_LABELS.get(tk, tk) for tk in all_topic_keys}
+    col_run, col_info = st.columns([1, 3])
+    with col_run:
+        run_btn = st.button("▶ Run", disabled=not config_ok)
+    with col_info:
+        if not config_ok:
+            st.warning("Enter your Semantic Scholar API key in the sidebar to start.")
+        elif dry_run:
+            st.info("Dry run — results shown but nothing saved.")
 
-    fc1, fc2, fc3 = st.columns([1.2, 1.5, 2])
-    with fc1:
-        tier_filter = st.multiselect("Filter by tier", ["tier1", "tier2", "tier3", "tier5"],
-            default=["tier1", "tier2", "tier3", "tier5"],
-            format_func=lambda x: {"tier1": "Core", "tier2": "Crossover",
-                                    "tier3": "Scholars", "tier5": "Journals"}[x])
-    with fc2:
-        topic_filter = st.multiselect("Filter by topic", list(topic_options.keys()),
-            default=list(topic_options.keys()),
-            format_func=lambda x: topic_options[x])
-    with fc3:
-        search_filter = st.text_input("Search", placeholder="Filter by title, author, journal…")
+    if run_btn:
+        st.session_state["results"]       = []
+        st.session_state["saved_this"]    = 0
+        st.session_state["selected_keys"] = set()
+        st.session_state["results_page"]  = 1
+        st.session_state["log_lines"]     = []
 
-    all_journals   = sorted(set(p["journal"] for p in results if p.get("journal")))
-    journal_filter = st.multiselect("Filter by journal", all_journals, default=[],
-                                    placeholder="All journals (select to narrow down…)")
+        config = build_config(s2_key, zotero_id, zotero_key, notion_tok, notion_db, collection_keys, anthropic_key)
+        topics = load_json_safe(TOPICS_PATH) or {}
+        since  = (datetime.today() - timedelta(days=days_back)).strftime("%Y-%m-%d")
+        pf.S2_HEADERS = {"x-api-key": s2_key} if s2_key else {}
 
-    sc1, sc2 = st.columns([1, 4])
-    with sc1:
-        sort_by = st.selectbox("Sort by", ["date_desc", "date_asc", "journal", "score_desc"],
-            format_func=lambda x: {"date_desc": "Newest first", "date_asc": "Oldest first",
-                                    "journal": "Journal A–Z", "score_desc": "Score (high → low)"}[x])
+        st.markdown("### Progress")
+        log_container = st.empty()
+        log_lines = st.session_state["log_lines"]
+        log_lines.append(f"Search range: {since} → today")
 
-    filtered = [p for p in results
-                if pf._get_tier(p["tag"]) in tier_filter
-                and get_topic_key(p["tag"]) in topic_filter]
-    if journal_filter:
-        filtered = [p for p in filtered if p.get("journal") in journal_filter]
-    if search_filter:
-        q = search_filter.lower()
-        filtered = [p for p in filtered
-                    if q in p.get("title", "").lower()
-                    or q in " ".join(p.get("authors", [])).lower()
-                    or q in p.get("journal", "").lower()]
-    if sort_by == "date_desc":
-        filtered = sorted(filtered, key=lambda p: p.get("pub_date", "") or p.get("year", ""), reverse=True)
-    elif sort_by == "date_asc":
-        filtered = sorted(filtered, key=lambda p: p.get("pub_date", "") or p.get("year", ""))
-    elif sort_by == "score_desc":
-        filtered = sorted(filtered, key=lambda p: p.get("relevance_score") if p.get("relevance_score") is not None else -1, reverse=True)
-    else:
-        filtered = sorted(filtered, key=lambda p: p.get("journal", "").lower())
+        def update_log():
+            log_text = "\n".join(log_lines[-80:])
+            log_container.markdown(
+                f'<div style="background:#0f0e0d;color:#a8d5a2;font-family:DM Mono,monospace;'
+                f'font-size:0.75rem;padding:1rem;border-radius:4px;height:220px;overflow-y:auto;">'
+                f'<pre>{log_text}</pre></div>', unsafe_allow_html=True)
 
-    with st.expander("📊 Results breakdown", expanded=True):
-        col_chart, col_journals_chart = st.columns(2)
-        with col_chart:
-            st.markdown("**Papers per topic** *(filtered)*")
-            ftc = Counter(get_topic_key(p["tag"]) for p in filtered)
-            sorted_t = sorted(ftc.items(), key=lambda x: -x[1])
-            max_n = sorted_t[0][1] if sorted_t else 1
-            for tk, n in sorted_t:
-                label = TOPIC_LABELS.get(tk, tk)
-                bar_w = int((n / max_n) * 100)
-                color = "#d63d6e" if tk.startswith("tier1") else "#2aaa8a" if tk.startswith("tier2") else "#6b3a8f" if tk.startswith("tier5") else "#b87c0a"
-                st.markdown(f"""<div style="margin-bottom:8px">
-                  <div style="display:flex;justify-content:space-between;margin-bottom:2px">
-                    <span style="font-size:0.78rem;color:#444">{label}</span>
-                    <span style="font-family:'DM Mono',monospace;font-size:0.72rem;color:#8a8480">{n}</span>
-                  </div>
-                  <div style="background:#ede8e0;border-radius:2px;height:5px">
-                    <div style="background:{color};width:{bar_w}%;height:5px;border-radius:2px"></div>
-                  </div></div>""", unsafe_allow_html=True)
-        with col_journals_chart:
-            st.markdown("**Top journals** *(filtered)*")
-            jlist = [p["journal"] for p in filtered if p.get("journal")]
-            if jlist:
-                top_j = Counter(jlist).most_common(8)
-                max_j = top_j[0][1]
-                for j, n in top_j:
-                    bar_w = int((n / max_j) * 100)
-                    st.markdown(f"""<div style="margin-bottom:8px">
-                      <div style="display:flex;justify-content:space-between;margin-bottom:2px">
-                        <span style="font-size:0.78rem;color:#444">{j[:40]}</span>
-                        <span style="font-family:'DM Mono',monospace;font-size:0.72rem;color:#8a8480">{n}</span>
-                      </div>
-                      <div style="background:#ede8e0;border-radius:2px;height:5px">
-                        <div style="background:#d63d6e;width:{bar_w}%;height:5px;border-radius:2px"></div>
-                      </div></div>""", unsafe_allow_html=True)
+        original_print = builtins.print
+        def patched_print(*args, **kwargs):
+            log_lines.append(" ".join(str(a) for a in args))
+            update_log()
+            original_print(*args, **kwargs)
+        builtins.print = patched_print
 
-    st.markdown("---")
+        try:
+            with st.spinner("Fetching papers…"):
+                all_papers = []
+                if mode in ("search", "all"):
+                    log_lines.append("\n── Tier 1 & 2: Keyword search ──"); update_log()
+                    all_papers.extend(pf.run_search(topics, since))
+                if mode in ("authors", "all"):
+                    log_lines.append("\n── Tier 3 & 4: Scholar tracking ──"); update_log()
+                    all_papers.extend(pf.run_authors(topics, since))
+                if mode in ("journals", "all"):
+                    log_lines.append("\n── Tier 5: Journal sweep ──"); update_log()
+                    all_papers.extend(pf.run_journals(since))
+                if mode == "all":
+                    all_papers = pf.deduplicate(all_papers)
 
-    PAGE_SIZE = 20
-    total_pages = max(1, (len(filtered) + PAGE_SIZE - 1) // PAGE_SIZE)
-    if st.session_state.get("last_filtered_count") != len(filtered):
-        st.session_state["page"] = 1
-        st.session_state["last_filtered_count"] = len(filtered)
-    page        = st.session_state["page"]
-    start       = (page - 1) * PAGE_SIZE
-    page_papers = filtered[start:start + PAGE_SIZE]
+                if research_focus_input.strip():
+                    if anthropic_key:
+                        log_lines.append(f"\n── Scoring {len(all_papers)} papers with Claude ──"); update_log()
+                        all_papers = pf.score_papers(all_papers, research_focus_input.strip(), api_key=anthropic_key)
+                        log_lines.append(f"{len(all_papers)} papers after scoring"); update_log()
+                        st.session_state["results"] = all_papers
+                    else:
+                        log_lines.append("[relevance] Anthropic API key not set — skipping scoring"); update_log()
 
-    st.markdown(
-        f"### Results &nbsp;<small style='color:#9a9490;font-size:0.8rem;font-family:DM Mono,monospace'>"
-        f"{len(filtered)} papers · page {page}/{total_pages}</small>",
-        unsafe_allow_html=True)
+                if not dry_run and target != "view":
+                    all_papers = pf.filter_new(all_papers)
+                    log_lines.append(f"\n{len(all_papers)} new papers (after dedup with history)")
+                else:
+                    log_lines.append(f"\n{len(all_papers)} papers found (dry run / view mode)")
+                update_log()
 
-    sel1, sel2, sel3 = st.columns([1, 1, 5])
-    with sel1:
-        if st.button("☑ Select page"):
-            for p in page_papers:
-                st.session_state["selected_keys"].add(paper_key(p))
-    with sel2:
-        if st.button("☐ Clear all"):
+                st.session_state["results"] = all_papers
+
+                if all_papers and not dry_run and target != "view":
+                    if target in ("zotero", "both") and config.get("zotero"):
+                        log_lines.append("\n── Saving to Zotero ──"); update_log()
+                        pf.save_to_zotero(all_papers, config)
+                    if target in ("notion", "both") and config.get("notion"):
+                        log_lines.append("\n── Saving to Notion ──"); update_log()
+                        pf.save_to_notion(all_papers, config)
+                    pf.record_saved(all_papers)
+                    pf.clear_cache()
+                    st.session_state["saved_this"] = len(all_papers)
+                else:
+                    log_lines.append("Results ready — select papers below to save manually.")
+
+                log_lines.append("\n✓ Done."); update_log()
+
+        except Exception as e:
+            log_lines.append(f"\n[ERROR] {type(e).__name__}: {e}"); update_log()
+        finally:
+            builtins.print = original_print
+
+    if st.session_state.get("log_lines"):
+        with st.expander("📋 Last run log", expanded=False):
+            log_text = "\n".join(st.session_state["log_lines"])
+            st.markdown(
+                f'<div style="background:#0f0e0d;color:#a8d5a2;font-family:DM Mono,monospace;'
+                f'font-size:0.75rem;padding:1rem;border-radius:4px;max-height:400px;overflow-y:auto;">'
+                f'<pre>{log_text}</pre></div>', unsafe_allow_html=True)
+
+    render_results(
+        st.session_state.get("results", []),
+        s2_key=s2_key,
+        zotero_id=zotero_id,
+        zotero_key=zotero_key,
+        notion_tok=notion_tok,
+        notion_db=notion_db,
+        collection_keys=collection_keys,
+        anthropic_key=anthropic_key,
+    )
+
+# ── Mode 2 ────────────────────────────────────────────────────────────────────
+def render_mode2():
+    with st.sidebar:
+        if st.button("← Home", key="m2_back"):
+            st.session_state["view"]      = "landing"
+            st.session_state["results"]   = []
+            st.session_state["log_lines"] = []
+            st.rerun()
+        st.markdown("## 🧇")
+        st.divider()
+
+        st.markdown("### API Keys")
+        st.text_input("Semantic Scholar API Key *", type="password", key="m2_s2_key",       placeholder="Required")
+        st.text_input("Zotero Library ID",                           key="m2_zotero_id",    placeholder="e.g. 10541129")
+        st.text_input("Zotero API Key",              type="password", key="m2_zotero_key")
+        st.text_input("Notion Token",                type="password", key="m2_notion_tok",  placeholder="secret_…")
+        st.text_input("Notion Database ID",                           key="m2_notion_db",   placeholder="32-char ID")
+        st.text_input("Anthropic API Key",           type="password", key="m2_anthropic_key", placeholder="sk-ant-… (for scoring)")
+        st.text_input("Zotero Collection Key (optional)", key="m2_zotero_coll",
+                      placeholder="8-char key, blank = root library")
+
+        s2_key        = st.session_state.get("m2_s2_key", "")
+        zotero_id     = st.session_state.get("m2_zotero_id", "")
+        zotero_key    = st.session_state.get("m2_zotero_key", "")
+        notion_tok    = st.session_state.get("m2_notion_tok", "")
+        notion_db     = st.session_state.get("m2_notion_db", "")
+        anthropic_key = st.session_state.get("m2_anthropic_key", "")
+        zotero_coll   = st.session_state.get("m2_zotero_coll", "")
+
+        st.divider()
+        st.markdown("### Settings")
+        target    = st.selectbox("Save to", ["view", "both", "zotero", "notion"],
+            format_func=lambda x: {"view": "View only (no save)", "both": "Zotero + Notion",
+                                    "zotero": "Zotero only", "notion": "Notion only"}[x],
+            key="m2_target")
+        days_back = st.slider("Look back (days)", 30, 365, 365, step=30, key="m2_days_back")
+        dry_run   = st.checkbox("Dry run (preview, don't save)", value=True, key="m2_dry_run")
+
+        st.divider()
+        st.markdown("### Stats")
+        st.markdown(f'<div class="stat-box"><div class="stat-num">{saved_count()}</div>'
+                    f'<div class="stat-label">Saved all-time</div></div>', unsafe_allow_html=True)
+        if st.button("🗑 Reset history", key="m2_reset"):
+            if SAVED_PATH.exists(): SAVED_PATH.unlink()
+            st.success("History cleared.")
+
+    flex_coll_keys = {
+        "flex:keyword":   zotero_coll,
+        "flex:crossover": zotero_coll,
+        "flex:scholar":   zotero_coll,
+        "flex:journal":   zotero_coll,
+    } if zotero_coll else {}
+
+    # ── Header ──
+    st.markdown("""
+<div style="text-align:center; padding: 2rem 0 0.5rem 0;">
+    <div style="font-size:3rem; animation: bounce 2s ease infinite; display:inline-block;">🧇</div>
+    <h1 style="font-family:Cambria,Georgia,serif; font-size:2.6rem; letter-spacing:-0.02em;
+               background: linear-gradient(135deg, #2aaa8a, #4a90d9);
+               -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+               background-clip: text; margin: 0.3rem 0 0.4rem 0;">
+        Custom Search
+    </h1>
+    <p style="color:#9a9490; font-family:'DM Mono',monospace; font-size:0.82rem; letter-spacing:0.1em; text-transform:uppercase;">
+        Mode 2 &nbsp;·&nbsp; Enter your own keywords, scholars, and journals
+    </p>
+</div>
+""", unsafe_allow_html=True)
+
+    config_ok = bool(s2_key)
+    col_a, col_b, col_c = st.columns(3)
+    with col_a: st.markdown(f'<div class="stat-box"><div class="stat-num">{"✓" if s2_key else "✗"}</div><div class="stat-label">S2 API Key</div></div>', unsafe_allow_html=True)
+    with col_b: st.markdown(f'<div class="stat-box"><div class="stat-num">{"✓" if zotero_id and zotero_key else "–"}</div><div class="stat-label">Zotero</div></div>', unsafe_allow_html=True)
+    with col_c: st.markdown(f'<div class="stat-box"><div class="stat-num">{"✓" if notion_tok and notion_db else "–"}</div><div class="stat-label">Notion</div></div>', unsafe_allow_html=True)
+
+    st.divider()
+
+    # ── Inputs ──
+    st.markdown("### Search Inputs")
+    col_left, col_right = st.columns(2)
+
+    with col_left:
+        st.markdown("**Keywords** — Semantic Scholar keyword search, up to 20 results per term")
+        st.caption("One per line.")
+        keywords_raw = st.text_area("Keywords", height=130, key="m2_keywords",
+            placeholder="social media wellbeing\ngender norms youth\nalgorithmic fairness",
+            label_visibility="collapsed")
+
+        st.markdown("**Crossover keywords** *(optional)* — same search, 8 results per term")
+        st.caption("Good for adjacent fields where you want signal without floods. One per line.")
+        crossover_raw = st.text_area("Crossover keywords", height=110, key="m2_crossover",
+            placeholder="evolutionary psychology\nbioethics\npolitical polarization",
+            label_visibility="collapsed")
+
+    with col_right:
+        st.markdown("**Scholars** — fetches their recent papers from Semantic Scholar")
+        st.caption("Full names as they appear on Semantic Scholar. One per line.")
+        scholars_raw = st.text_area("Scholars", height=130, key="m2_scholars",
+            placeholder="Amy Orben\nAndrew Przybylski\nPhilipp Masur",
+            label_visibility="collapsed")
+
+        st.markdown("**Journals** — sweeps all recent articles via OpenAlex")
+        st.caption("Exact journal names for OpenAlex lookup. One per line.")
+        journals_raw = st.text_area("Journals", height=110, key="m2_journals",
+            placeholder="Journal of Communication\nNew Media & Society\nComputers in Human Behavior",
+            label_visibility="collapsed")
+
+    st.markdown("### Research Focus *(optional)*")
+    st.caption("Claude scores each paper 0–10 for relevance. Requires an Anthropic key in the sidebar.")
+    research_focus_input = st.text_area(
+        "Research Focus",
+        height=90,
+        placeholder="e.g. political communication, misinformation, social media and democracy",
+        key="m2_research_focus",
+        label_visibility="collapsed",
+    )
+
+    st.divider()
+
+    col_run, col_info = st.columns([1, 3])
+    with col_run:
+        run_btn = st.button("▶ Run", disabled=not config_ok, key="m2_run")
+    with col_info:
+        if not config_ok:
+            st.warning("Enter your Semantic Scholar API key in the sidebar to start.")
+        elif dry_run:
+            st.info("Dry run — results shown but nothing saved.")
+
+    if run_btn:
+        keywords   = [l.strip() for l in keywords_raw.splitlines()  if l.strip()]
+        crossovers = [l.strip() for l in crossover_raw.splitlines() if l.strip()]
+        scholars   = [l.strip() for l in scholars_raw.splitlines()  if l.strip()]
+        journals   = [l.strip() for l in journals_raw.splitlines()  if l.strip()]
+
+        if not any([keywords, crossovers, scholars, journals]):
+            st.warning("Enter at least one keyword, scholar, or journal to search.")
+        else:
+            st.session_state["results"]       = []
+            st.session_state["saved_this"]    = 0
             st.session_state["selected_keys"] = set()
+            st.session_state["results_page"]  = 1
+            st.session_state["log_lines"]     = []
 
-    n_selected = len(st.session_state["selected_keys"])
-    if n_selected:
-        st.markdown(f"**{n_selected} paper{'s' if n_selected > 1 else ''} selected**")
+            since = (datetime.today() - timedelta(days=days_back)).strftime("%Y-%m-%d")
+            pf.S2_HEADERS = {"x-api-key": s2_key} if s2_key else {}
 
-    for p in page_papers:
-        pk      = paper_key(p)
-        checked = pk in st.session_state["selected_keys"]
-        col_chk, col_card = st.columns([0.04, 0.96])
-        with col_chk:
-            new_val = st.checkbox("select", value=checked, key=f"chk_{pk[:60]}", label_visibility="hidden")
-            if new_val:
-                st.session_state["selected_keys"].add(pk)
-            else:
-                st.session_state["selected_keys"].discard(pk)
-        with col_card:
-            render_paper_card(p)
-        if p.get("doi"):
-            is_active = st.session_state.get("network_paper_key") == pk
-            if st.button("▲ Hide Network" if is_active else "🔗 Citation Network",
-                         key=f"net_btn_{pk[:50]}"):
-                st.session_state["network_paper_key"] = None if is_active else pk
-            if st.session_state.get("network_paper_key") == pk:
-                _render_network(p, s2_key)
+            st.markdown("### Progress")
+            log_container = st.empty()
+            log_lines = st.session_state["log_lines"]
+            log_lines.append(f"Search range: {since} → today")
 
-    if total_pages > 1:
-        pc1, pc2, pc3, pc4, pc5 = st.columns([1, 1, 2, 1, 1])
-        with pc1:
-            if st.button("⟪ First") and page > 1:
-                st.session_state["page"] = 1; st.rerun()
-        with pc2:
-            if st.button("← Prev") and page > 1:
-                st.session_state["page"] = page - 1; st.rerun()
-        with pc3:
-            st.markdown(f'<div style="text-align:center;font-family:DM Mono,monospace;font-size:0.8rem;'
-                        f'color:#9a9490;padding-top:0.5rem">Page {page} of {total_pages}</div>',
-                        unsafe_allow_html=True)
-        with pc4:
-            if st.button("Next →") and page < total_pages:
-                st.session_state["page"] = page + 1; st.rerun()
-        with pc5:
-            if st.button("Last ⟫") and page < total_pages:
-                st.session_state["page"] = total_pages; st.rerun()
+            def update_log():
+                log_text = "\n".join(log_lines[-80:])
+                log_container.markdown(
+                    f'<div style="background:#0f0e0d;color:#a8d5a2;font-family:DM Mono,monospace;'
+                    f'font-size:0.75rem;padding:1rem;border-radius:4px;height:220px;overflow-y:auto;">'
+                    f'<pre>{log_text}</pre></div>', unsafe_allow_html=True)
 
-    st.markdown("---")
-    selected_papers = [p for p in filtered if paper_key(p) in st.session_state["selected_keys"]]
+            original_print = builtins.print
+            def patched_print(*args, **kwargs):
+                log_lines.append(" ".join(str(a) for a in args))
+                update_log()
+                original_print(*args, **kwargs)
+            builtins.print = patched_print
 
-    if selected_papers:
-        st.markdown(f"### Save {len(selected_papers)} selected paper{'s' if len(selected_papers) > 1 else ''}")
-        config_now = build_config(s2_key, zotero_id, zotero_key, notion_tok, notion_db, collection_keys, anthropic_key)
-        sv1, sv2, sv3 = st.columns([1, 1, 4])
-        with sv1:
-            if st.button("💾 Save to Zotero", disabled=not (zotero_id and zotero_key)):
-                try:
-                    pf.S2_HEADERS = {"x-api-key": s2_key} if s2_key else {}
-                    pf.save_to_zotero(selected_papers, config_now)
-                    pf.record_saved(selected_papers)
-                    st.session_state["selected_keys"] = set()
-                    st.success(f"✓ {len(selected_papers)} papers saved to Zotero.")
-                except Exception as e:
-                    st.error(f"Zotero save failed: {e}")
-        with sv2:
-            if st.button("📝 Save to Notion", disabled=not (notion_tok and notion_db)):
-                try:
-                    pf.S2_HEADERS = {"x-api-key": s2_key} if s2_key else {}
-                    pf.save_to_notion(selected_papers, config_now)
-                    pf.record_saved(selected_papers)
-                    st.session_state["selected_keys"] = set()
-                    st.success(f"✓ {len(selected_papers)} papers saved to Notion.")
-                except Exception as e:
-                    st.error(f"Notion save failed: {e}")
-    elif st.session_state["saved_this"] > 0:
-        st.success(f"✓ {st.session_state['saved_this']} papers auto-saved.")
+            try:
+                with st.spinner("Fetching papers…"):
+                    all_papers = []
+
+                    if keywords:
+                        log_lines.append(f"\n── Keywords: {len(keywords)} term(s) ──"); update_log()
+                        all_papers.extend(pf.run_keywords_flexible(keywords, since, max_per_keyword=20))
+
+                    if crossovers:
+                        log_lines.append(f"\n── Crossover keywords: {len(crossovers)} term(s) ──"); update_log()
+                        cx = pf.run_keywords_flexible(crossovers, since, max_per_keyword=8)
+                        for p in cx:
+                            p["tag"] = "flex:crossover"
+                        all_papers.extend(cx)
+
+                    if scholars:
+                        log_lines.append(f"\n── Scholars: {len(scholars)} name(s) ──"); update_log()
+                        all_papers.extend(pf.run_authors_flexible(scholars, since))
+
+                    if journals:
+                        log_lines.append(f"\n── Journals: {len(journals)} name(s) ──"); update_log()
+                        all_papers.extend(pf.run_journals_flexible(journals, since))
+
+                    all_papers = pf.deduplicate(all_papers)
+                    log_lines.append(f"\n{len(all_papers)} papers after cross-source dedup"); update_log()
+
+                    if research_focus_input.strip():
+                        if anthropic_key:
+                            log_lines.append(f"\n── Scoring {len(all_papers)} papers with Claude ──"); update_log()
+                            all_papers = pf.score_papers(all_papers, research_focus_input.strip(), api_key=anthropic_key)
+                            log_lines.append(f"{len(all_papers)} papers after scoring"); update_log()
+                        else:
+                            log_lines.append("[relevance] Anthropic API key not set — skipping scoring"); update_log()
+
+                    if not dry_run and target != "view":
+                        all_papers = pf.filter_new(all_papers)
+                        log_lines.append(f"\n{len(all_papers)} new papers (after dedup with history)")
+                    else:
+                        log_lines.append(f"\n{len(all_papers)} papers found (dry run / view mode)")
+                    update_log()
+
+                    st.session_state["results"] = all_papers
+
+                    if all_papers and not dry_run and target != "view":
+                        config = build_config(s2_key, zotero_id, zotero_key, notion_tok, notion_db,
+                                              flex_coll_keys, anthropic_key)
+                        if target in ("zotero", "both") and config.get("zotero"):
+                            log_lines.append("\n── Saving to Zotero ──"); update_log()
+                            pf.save_to_zotero(all_papers, config)
+                        if target in ("notion", "both") and config.get("notion"):
+                            log_lines.append("\n── Saving to Notion ──"); update_log()
+                            pf.save_to_notion(all_papers, config)
+                        pf.record_saved(all_papers)
+                        pf.clear_cache()
+                        st.session_state["saved_this"] = len(all_papers)
+                    else:
+                        log_lines.append("Results ready — select papers below to save manually.")
+
+                    log_lines.append("\n✓ Done."); update_log()
+
+            except Exception as e:
+                log_lines.append(f"\n[ERROR] {type(e).__name__}: {e}"); update_log()
+            finally:
+                builtins.print = original_print
+
+    if st.session_state.get("log_lines"):
+        with st.expander("📋 Last run log", expanded=False):
+            log_text = "\n".join(st.session_state["log_lines"])
+            st.markdown(
+                f'<div style="background:#0f0e0d;color:#a8d5a2;font-family:DM Mono,monospace;'
+                f'font-size:0.75rem;padding:1rem;border-radius:4px;max-height:400px;overflow-y:auto;">'
+                f'<pre>{log_text}</pre></div>', unsafe_allow_html=True)
+
+    render_results(
+        st.session_state.get("results", []),
+        s2_key=s2_key,
+        zotero_id=zotero_id,
+        zotero_key=zotero_key,
+        notion_tok=notion_tok,
+        notion_db=notion_db,
+        collection_keys=flex_coll_keys,
+        anthropic_key=anthropic_key,
+    )
+
+# ── Router ────────────────────────────────────────────────────────────────────
+view = st.session_state.get("view", "landing")
+if view == "mode1":
+    render_mode1()
+elif view == "mode2":
+    render_mode2()
+else:
+    render_landing()
