@@ -219,7 +219,7 @@ def _render_network(p, s2_key=""):
         pf.S2_HEADERS = {"x-api-key": s2_key}
 
     doi      = p.get("doi", "")
-    paper_id = p.get("paperId", "")
+    paper_id = p.get("paperId", "") or (f"DOI:{doi}" if doi else "")
 
     if not doi:
         st.info(_NO_DATA)

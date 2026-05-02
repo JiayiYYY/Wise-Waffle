@@ -771,7 +771,9 @@ def fetch_s2_related(paper_id):
     if not paper_id:
         return []
     url  = f"{S2_BASE}/paper/{paper_id}/recommendations"
+    print(f"[s2 related] GET {url}")
     data = _request("GET", url, params={"fields": "title,authors,year,externalIds"})
+    print(f"[s2 related] response keys: {list(data.keys()) if data else None}")
     if not data:
         return []
     papers = data.get("recommendedPapers") or data.get("data") or []
