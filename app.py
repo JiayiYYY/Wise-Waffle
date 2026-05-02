@@ -214,35 +214,46 @@ def render_paper_card(p):
                             unsafe_allow_html=True)
 
 def _render_network(p, s2_key=""):
+    _NO_DATA = "No citation data available — this paper may not be indexed in OpenAlex yet."
+
     try:
         from pyvis.network import Network
     except ImportError:
         st.error("pyvis not installed — run: pip install pyvis")
         return
 
-    if s2_key:
-        pf.S2_HEADERS = {"x-api-key": s2_key}
-
     doi = p.get("doi", "")
-    pk  = paper_key(p)
+    if not doi:
+        st.info(_NO_DATA)
+        return
+
+    pk    = paper_key(p)
     cache = st.session_state["network_cache"]
 
     if pk not in cache:
-        with st.spinner("Fetching citation network from Semantic Scholar…"):
-            cache[pk] = pf.fetch_paper_network(doi)
+        with st.spinner("Fetching citation network from OpenAlex…"):
+            cache[pk] = pf.fetch_openalex_network(doi)
 
     data = cache[pk]
     if not data:
-        st.warning("Paper not found on Semantic Scholar — it may not be indexed.")
+        st.info(_NO_DATA)
         return
 
-    center_id = data["center"].get("paperId", doi)
-    refs      = data.get("references") or []
-    cits      = data.get("citations")  or []
+    center = data["center"]
+    refs   = data.get("references") or []
+    cits   = data.get("citations")  or []
 
-    st.write("DEBUG — center:", data["center"])
-    st.write(f"DEBUG — references ({len(refs)}):", refs[:3])
-    st.write(f"DEBUG — citations ({len(cits)}):", cits[:3])
+    def _nid(item):
+        return item.get("doi") or f"_{item.get('title', '')[:60]}_{item.get('year', '')}"
+
+    def _label(item):
+        t = item.get("title") or "Unknown"
+        return (t[:28] + "…") if len(t) > 28 else t
+
+    def _tooltip(item):
+        t = (item.get("title") or "Unknown")[:60]
+        y = item.get("year", "")
+        return f"{t} ({y})" if y else t
 
     net = Network(height="480px", width="100%", bgcolor="#fdf8f2",
                   font_color="#1a1a1a", directed=True)
@@ -261,40 +272,30 @@ def _render_network(p, s2_key=""):
       "interaction": {"hover": true, "tooltipDelay": 80, "navigationButtons": false}
     }""")
 
-    title_str   = p.get("title", "Unknown")
-    authors_str = ", ".join(p.get("authors", [])[:3])
-    net.add_node(center_id,
-                 label=(title_str[:35] + "…") if len(title_str) > 35 else title_str,
-                 title=f"<b>{title_str}</b><br>{authors_str}<br>{p.get('year', '')}",
+    center_nid = _nid(center)
+    net.add_node(center_nid, label=_label(center), title=_tooltip(center),
                  color="#d63d6e", size=22)
+    added = {center_nid}
 
     for ref in refs:
-        rp = ref.get("citedPaper") or {}
-        if not rp.get("paperId"):
+        nid = _nid(ref)
+        if nid in added:
             continue
-        rtitle   = rp.get("title") or "Unknown"
-        rauthors = ", ".join(a.get("name", "") for a in (rp.get("authors") or [])[:3])
-        net.add_node(rp["paperId"],
-                     label=(rtitle[:30] + "…") if len(rtitle) > 30 else rtitle,
-                     title=f"<b>{rtitle}</b><br>{rauthors}<br>{rp.get('year', '')}",
-                     color="#2aaa8a", size=12)
-        net.add_edge(center_id, rp["paperId"])
+        net.add_node(nid, label=_label(ref), title=_tooltip(ref), color="#2aaa8a", size=12)
+        net.add_edge(center_nid, nid)
+        added.add(nid)
 
     for cit in cits:
-        cp = cit.get("citingPaper") or {}
-        if not cp.get("paperId"):
+        nid = _nid(cit)
+        if nid in added:
             continue
-        ctitle   = cp.get("title") or "Unknown"
-        cauthors = ", ".join(a.get("name", "") for a in (cp.get("authors") or [])[:3])
-        net.add_node(cp["paperId"],
-                     label=(ctitle[:30] + "…") if len(ctitle) > 30 else ctitle,
-                     title=f"<b>{ctitle}</b><br>{cauthors}<br>{cp.get('year', '')}",
-                     color="#f5a623", size=12)
-        net.add_edge(cp["paperId"], center_id)
+        net.add_node(nid, label=_label(cit), title=_tooltip(cit), color="#f5a623", size=12)
+        net.add_edge(nid, center_nid)
+        added.add(nid)
 
     n_nodes = len(net.nodes)
     if n_nodes <= 1:
-        st.info("No connected papers found on Semantic Scholar for this paper.")
+        st.info(_NO_DATA)
         return
 
     st.markdown(

@@ -663,35 +663,95 @@ def score_papers(papers, research_focus, min_score=0, api_key="", batch_size=10)
 
     return scored
 
-# ── Citation network ─────────────────────────────────────────────────────────
+# ── Citation network (OpenAlex) ───────────────────────────────────────────────
 
-def fetch_paper_network(doi, limit=40):
-    """Return center paper + references + citations from Semantic Scholar for a DOI."""
+def _oa_normalize_work(w):
+    """Extract {title, doi, year, authors} from an OpenAlex work object."""
+    doi = (w.get("doi") or "")
+    if doi.startswith("https://doi.org/"):
+        doi = doi[len("https://doi.org/"):]
+    authors = [
+        (a.get("author") or {}).get("display_name", "")
+        for a in (w.get("authorships") or [])[:3]
+        if (a.get("author") or {}).get("display_name")
+    ]
+    return {
+        "title":   w.get("title") or "Unknown",
+        "doi":     doi,
+        "year":    str(w.get("publication_year", "") or ""),
+        "authors": authors,
+    }
+
+
+def fetch_openalex_network(doi, ref_limit=40, cit_limit=20):
+    """Return citation network for a DOI via OpenAlex.
+
+    Returns a dict with keys:
+        center      – {title, doi, year}
+        references  – list of {title, doi, year, authors}  (papers this work cites)
+        citations   – list of {title, doi, year, authors}  (papers that cite this work)
+    Returns None if the DOI is missing or OpenAlex returns no data.
+    """
     if not doi:
         return None
-    paper_fields = "title,authors,year,externalIds,paperId"
-    ref_fields   = ",".join(f"citedPaper.{f}"  for f in paper_fields.split(","))
-    cit_fields   = ",".join(f"citingPaper.{f}" for f in paper_fields.split(","))
 
-    # Resolve via DOI first; then use the canonical paperId for refs/cits calls.
-    center = _request("GET", f"{S2_BASE}/paper/DOI:{doi}", params={"fields": paper_fields})
-    if not center:
+    _select = "title,doi,publication_year,authorships,referenced_works,cited_by_api_url"
+    try:
+        r = requests.get(
+            f"https://api.openalex.org/works/doi:{doi}",
+            params={"select": _select},
+            timeout=15,
+        )
+    except requests.RequestException as e:
+        print(f"[openalex network] request error: {e}")
         return None
-    time.sleep(0.5)
 
-    paper_id  = center.get("paperId") or f"DOI:{doi}"
-    refs_data = _request("GET", f"{S2_BASE}/paper/{paper_id}/references",
-                          params={"fields": ref_fields, "limit": limit})
-    time.sleep(0.5)
+    if r.status_code != 200 or not r.json().get("id"):
+        print(f"[openalex network] HTTP {r.status_code} for doi:{doi}")
+        return None
 
-    cits_data = _request("GET", f"{S2_BASE}/paper/{paper_id}/citations",
-                          params={"fields": cit_fields, "limit": limit})
+    work          = r.json()
+    center        = _oa_normalize_work(work)
+    ref_ids_full  = work.get("referenced_works") or []
+    cited_by_url  = work.get("cited_by_api_url") or ""
 
-    return {
-        "center":     center,
-        "references": (refs_data or {}).get("data", []),
-        "citations":  (cits_data or {}).get("data", []),
-    }
+    # ── References ────────────────────────────────────────────────────────────
+    references = []
+    ref_ids    = [rid.rsplit("/", 1)[-1] for rid in ref_ids_full[:ref_limit]]
+    if ref_ids:
+        try:
+            rr = requests.get(
+                "https://api.openalex.org/works",
+                params={
+                    "filter":   f"openalex_id:{'|'.join(ref_ids)}",
+                    "per-page": ref_limit,
+                    "select":   "title,doi,publication_year,authorships",
+                },
+                timeout=20,
+            )
+            if rr.status_code == 200:
+                references = [_oa_normalize_work(w) for w in rr.json().get("results", [])]
+        except requests.RequestException as e:
+            print(f"[openalex network] references error: {e}")
+
+    # ── Citing works ──────────────────────────────────────────────────────────
+    citations = []
+    if cited_by_url:
+        try:
+            cr = requests.get(
+                cited_by_url,
+                params={
+                    "per-page": cit_limit,
+                    "select":   "title,doi,publication_year,authorships",
+                },
+                timeout=20,
+            )
+            if cr.status_code == 200:
+                citations = [_oa_normalize_work(w) for w in cr.json().get("results", [])]
+        except requests.RequestException as e:
+            print(f"[openalex network] citations error: {e}")
+
+    return {"center": center, "references": references, "citations": citations}
 
 # ── Save to Zotero ────────────────────────────────────────────────────────────
 
