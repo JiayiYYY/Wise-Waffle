@@ -10,7 +10,6 @@ from pathlib import Path
 from collections import Counter
 
 import streamlit as st
-import streamlit.components.v1 as components
 import paper_fetcher as pf
 
 st.set_page_config(page_title="Wise Waffle", page_icon="🧇", layout="wide", initial_sidebar_state="expanded")
@@ -216,12 +215,6 @@ def render_paper_card(p):
 def _render_network(p, s2_key=""):
     _NO_DATA = "No citation data available — this paper may not be indexed in OpenAlex yet."
 
-    try:
-        from pyvis.network import Network
-    except ImportError:
-        st.error("pyvis not installed — run: pip install pyvis")
-        return
-
     doi = p.get("doi", "")
     if not doi:
         st.info(_NO_DATA)
@@ -231,7 +224,7 @@ def _render_network(p, s2_key=""):
     cache = st.session_state["network_cache"]
 
     if pk not in cache:
-        with st.spinner("Fetching citation network from OpenAlex…"):
+        with st.spinner("Fetching citation data from OpenAlex…"):
             cache[pk] = pf.fetch_openalex_network(doi)
 
     data = cache[pk]
@@ -239,78 +232,46 @@ def _render_network(p, s2_key=""):
         st.info(_NO_DATA)
         return
 
-    center = data["center"]
-    refs   = data.get("references") or []
-    cits   = data.get("citations")  or []
+    refs = data.get("references") or []
+    cits = data.get("citations")  or []
 
-    def _nid(item):
-        return item.get("doi") or f"_{item.get('title', '')[:60]}_{item.get('year', '')}"
+    def _to_rows(items):
+        rows = []
+        for item in items:
+            d = item.get("doi", "")
+            rows.append({
+                "Title":   item.get("title") or "Unknown",
+                "Authors": ", ".join(item.get("authors") or []),
+                "Year":    item.get("year") or "",
+                "DOI":     f"https://doi.org/{d}" if d else "",
+            })
+        return rows
 
-    def _label(item):
-        t = item.get("title") or "Unknown"
-        return (t[:28] + "…") if len(t) > 28 else t
+    st.markdown(f"**References ({len(refs)}) — papers this article cites**")
+    if refs:
+        st.dataframe(
+            _to_rows(refs),
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "DOI": st.column_config.LinkColumn("DOI", display_text="↗ open"),
+            },
+        )
+    else:
+        st.caption("No references indexed.")
 
-    def _tooltip(item):
-        t = (item.get("title") or "Unknown")[:60]
-        y = item.get("year", "")
-        return f"{t} ({y})" if y else t
-
-    net = Network(height="480px", width="100%", bgcolor="#fdf8f2",
-                  font_color="#1a1a1a", directed=True)
-    net.set_options("""{
-      "nodes": {"font": {"size": 11, "face": "monospace"}, "borderWidth": 1, "shape": "dot"},
-      "edges": {
-        "arrows": {"to": {"enabled": true, "scaleFactor": 0.5}},
-        "color": {"color": "#c8c0b8", "opacity": 0.7},
-        "smooth": {"type": "curvedCW", "roundness": 0.15}
-      },
-      "physics": {
-        "solver": "forceAtlas2Based",
-        "forceAtlas2Based": {"gravitationalConstant": -35, "centralGravity": 0.01, "springLength": 180},
-        "stabilization": {"iterations": 120}
-      },
-      "interaction": {"hover": true, "tooltipDelay": 80, "navigationButtons": false}
-    }""")
-
-    center_nid = _nid(center)
-    net.add_node(center_nid, label=_label(center), title=_tooltip(center),
-                 color="#d63d6e", size=22)
-    added = {center_nid}
-
-    for ref in refs:
-        nid = _nid(ref)
-        if nid in added:
-            continue
-        net.add_node(nid, label=_label(ref), title=_tooltip(ref), color="#2aaa8a", size=12)
-        net.add_edge(center_nid, nid)
-        added.add(nid)
-
-    for cit in cits:
-        nid = _nid(cit)
-        if nid in added:
-            continue
-        net.add_node(nid, label=_label(cit), title=_tooltip(cit), color="#f5a623", size=12)
-        net.add_edge(nid, center_nid)
-        added.add(nid)
-
-    n_nodes = len(net.nodes)
-    if n_nodes <= 1:
-        st.info(_NO_DATA)
-        return
-
-    st.markdown(
-        f'<div style="font-family:DM Mono,monospace;font-size:0.72rem;margin-bottom:0.4rem;'
-        f'display:flex;gap:1.5rem;color:#666">'
-        f'<span><span style="display:inline-block;width:9px;height:9px;border-radius:50%;'
-        f'background:#d63d6e;margin-right:4px;vertical-align:middle"></span>This paper</span>'
-        f'<span><span style="display:inline-block;width:9px;height:9px;border-radius:50%;'
-        f'background:#2aaa8a;margin-right:4px;vertical-align:middle"></span>References ({len(refs)})</span>'
-        f'<span><span style="display:inline-block;width:9px;height:9px;border-radius:50%;'
-        f'background:#f5a623;margin-right:4px;vertical-align:middle"></span>Citing papers ({len(cits)})</span>'
-        f'<span style="margin-left:auto">{n_nodes} nodes</span></div>',
-        unsafe_allow_html=True)
-
-    components.html(net.generate_html(), height=500, scrolling=False)
+    st.markdown(f"**Cited by ({len(cits)}) — papers citing this article**")
+    if cits:
+        st.dataframe(
+            _to_rows(cits),
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "DOI": st.column_config.LinkColumn("DOI", display_text="↗ open"),
+            },
+        )
+    else:
+        st.caption("No citing papers indexed yet — this paper may be too recent.")
 
 COLLECTION_KEY_LABELS = {
     "tier1:ai_fairness_decolonial":          "Core — AI Fairness & Decolonial",
