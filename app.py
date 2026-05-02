@@ -41,7 +41,8 @@ section[data-testid="stSidebar"] [data-testid="stExpanderDetails"] {
 section[data-testid="stSidebar"] [data-testid="stExpanderDetails"] * {
     color: #1a1a1a !important;
 }
-section[data-testid="stSidebar"] input { color:var(--ink) !important; background:#fff !important; }
+section[data-testid="stSidebar"] input    { color:var(--ink) !important; background:#fff !important; }
+section[data-testid="stSidebar"] textarea { color:var(--ink) !important; background:#fff !important; }
 section[data-testid="stSidebar"] .stSelectbox div[data-baseweb="select"] * { color:var(--ink) !important; }
 section[data-testid="stSidebar"] .stMultiSelect div[data-baseweb="select"] * { color:var(--ink) !important; }
 
@@ -310,6 +311,22 @@ Get a free API key at [semanticscholar.org/product/api](https://www.semanticscho
                                 "zotero": "Zotero only", "notion": "Notion only"}[x])
     days_back = st.slider("Look back (days)", 30, 365, 365, step=30)
     dry_run   = st.checkbox("Dry run (preview, don't save)", value=True)
+
+    st.markdown("### Research Focus")
+    _cfg_rf = load_json_safe(CONFIG_PATH) or {}
+    research_focus_input = st.text_area(
+        "Describe your research interests — used by Claude to score paper relevance",
+        value=_cfg_rf.get("research_focus", ""),
+        height=110,
+        placeholder="e.g. political communication, misinformation, social media and democracy",
+        key="research_focus_input",
+    )
+    if st.button("Save focus"):
+        _cfg_save = load_json_safe(CONFIG_PATH) or {}
+        _cfg_save["research_focus"] = research_focus_input.strip()
+        with open(CONFIG_PATH, "w", encoding="utf-8") as _f:
+            json.dump(_cfg_save, _f, ensure_ascii=False, indent=2)
+        st.success("Research focus saved.")
 
     st.divider()
     st.markdown("### Stats")

@@ -132,6 +132,11 @@ def _is_recent(paper, since):
     year = paper.get("year") or paper.get("publication_year", "")
     return str(year) >= since[:4] if year else False
 
+def _log_step(n, label, count=None, detail=""):
+    count_str  = f": {count} papers" if count is not None else ""
+    detail_str = f" ({detail})" if detail else ""
+    print(f"\n── Step {n}: {label}{count_str}{detail_str}")
+
 # ── Normalize ─────────────────────────────────────────────────────────────────
 
 def normalize(paper, tag=""):
@@ -190,7 +195,12 @@ def search_bulk(query, since, max_results=100):
         data = _request("GET", S2_BULK_SEARCH, params=params)
         if not data:
             break
-        batch = [p for p in data.get("data", []) if _is_english(p) and _has_abstract(p)]
+        raw     = data.get("data", [])
+        no_lang = sum(1 for p in raw if not _is_english(p))
+        no_abs  = sum(1 for p in raw if _is_english(p) and not _has_abstract(p))
+        batch   = [p for p in raw if _is_english(p) and _has_abstract(p)]
+        if no_lang or no_abs:
+            print(f"    [filter] -{no_lang} non-English, -{no_abs} no abstract, +{len(batch)} kept")
         results.extend(batch)
         token = data.get("token")
         if not token or len(results) >= max_results:
@@ -224,10 +234,15 @@ def get_papers_for_authors(author_ids, since, papers_per_author=15):
         if not data:
             time.sleep(1.2)
             continue
-        papers = data.get("data", [])
-        recent = [p for p in papers if _is_recent(p, since) and _is_english(p) and _has_abstract(p)]
-        recent = sorted(recent, key=lambda p: p.get("publicationDate") or "", reverse=True)
-        all_papers.extend(recent[:papers_per_author])
+        papers  = data.get("data", [])
+        total   = len(papers)
+        recent  = [p for p in papers if _is_recent(p, since) and _is_english(p) and _has_abstract(p)]
+        recent  = sorted(recent, key=lambda p: p.get("publicationDate") or "", reverse=True)
+        kept    = recent[:papers_per_author]
+        dropped = total - len(recent)
+        if dropped:
+            print(f"    [filter] author {author_id}: -{dropped} (old/non-English/no abstract), +{len(kept)} kept")
+        all_papers.extend(kept)
         time.sleep(1.2)
     return all_papers
 
@@ -417,6 +432,78 @@ def _get_topic_key(tag):
     if tag.startswith("ascor"): return "tier3:ascor"
     return ":".join(tag.split(":")[:2]) if ":" in tag else tag
 
+# ── Claude relevance scoring ──────────────────────────────────────────────────
+
+def score_papers(papers, research_focus, min_score=0, api_key="", batch_size=10):
+    """Score papers for relevance using Claude API; filter to >= min_score if min_score > 0."""
+    try:
+        import anthropic
+    except ImportError:
+        print("[relevance] 'anthropic' not installed — pip install anthropic")
+        return papers
+
+    client    = anthropic.Anthropic(api_key=api_key) if api_key else anthropic.Anthropic()
+    n_batches = (len(papers) + batch_size - 1) // batch_size
+    print(f"\n[relevance] scoring {len(papers)} papers in {n_batches} batches...")
+
+    system_block = {
+        "type": "text",
+        "text": (
+            "You are a research assistant scoring academic papers for relevance.\n\n"
+            f"Research focus: {research_focus}\n\n"
+            "For each paper in the JSON array provided, return a JSON array where each element has:\n"
+            '  "index": integer (0-based, matching input)\n'
+            '  "score": integer 0-10 (0=irrelevant, 10=highly relevant)\n'
+            '  "reason": one sentence explaining the score\n\n'
+            "Respond with only the JSON array, no other text."
+        ),
+        "cache_control": {"type": "ephemeral"},
+    }
+
+    scored = []
+    for i in range(0, len(papers), batch_size):
+        batch   = papers[i : i + batch_size]
+        payload = [
+            {"index": j, "title": p["title"], "abstract": (p["abstract"] or "")[:800]}
+            for j, p in enumerate(batch)
+        ]
+        try:
+            resp    = client.messages.create(
+                model="claude-opus-4-7",
+                max_tokens=1024,
+                system=[system_block],
+                messages=[{"role": "user", "content": json.dumps(payload)}],
+            )
+            entries = json.loads(resp.content[0].text)
+        except Exception as e:
+            print(f"  [relevance] batch {i // batch_size + 1} error: {e} — defaulting to score 5")
+            entries = [{"index": j, "score": 5, "reason": "scoring error"} for j in range(len(batch))]
+
+        for entry in entries:
+            idx = entry.get("index", 0)
+            if 0 <= idx < len(batch):
+                batch[idx]["relevance_score"]  = entry.get("score", 5)
+                batch[idx]["relevance_reason"] = entry.get("reason", "")
+
+        for p in batch:
+            if "relevance_score" not in p:
+                p["relevance_score"]  = 5
+                p["relevance_reason"] = "not scored"
+
+        above = sum(1 for p in batch if p.get("relevance_score", 0) >= min_score)
+        print(f"  batch {i // batch_size + 1}/{n_batches}: {len(batch)} scored, {above} >= {min_score}")
+        scored.extend(batch)
+        time.sleep(0.3)
+
+    if min_score > 0:
+        before = len(scored)
+        scored = [p for p in scored if p.get("relevance_score", 0) >= min_score]
+        print(f"[relevance] {before} → {len(scored)} after min_score={min_score} filter")
+    else:
+        print(f"[relevance] {len(scored)} papers scored, no threshold filter applied")
+
+    return scored
+
 # ── Save to Zotero ────────────────────────────────────────────────────────────
 
 def save_to_zotero(papers, config, dry_run=False):
@@ -449,7 +536,11 @@ def save_to_zotero(papers, config, dry_run=False):
             item["date"]             = p["pub_date"] or p["year"]
             item["DOI"]              = p["doi"]
             item["url"]              = p["url"]
-            item["extra"]            = f"source_tag: {p['tag']}"
+            score_note = (
+                f"\nrelevance: {p['relevance_score']}/10 — {p.get('relevance_reason', '')}"
+                if p.get("relevance_score") is not None else ""
+            )
+            item["extra"]            = f"source_tag: {p['tag']}{score_note}"
             item["creators"]         = [
                 {"creatorType": "author", "firstName": "", "lastName": n}
                 for n in p["authors"]
@@ -483,7 +574,8 @@ def save_to_notion(papers, config, dry_run=False):
 
     for p in papers:
         authors_str = "; ".join(str(a) for a in p.get("authors", []))[:2000]
-        tier = _get_tier(p["tag"])
+        tier      = _get_tier(p["tag"])
+        score_tag = f" | relevance:{p['relevance_score']}/10" if p.get("relevance_score") is not None else ""
         props = {
             "Title":    {"title":     [{"text": {"content": (p.get("title") or "")[:2000]}}]},
             "Authors":  {"rich_text": [{"text": {"content": authors_str}}]},
@@ -491,7 +583,7 @@ def save_to_notion(papers, config, dry_run=False):
             "Journal":  {"rich_text": [{"text": {"content": (p.get("journal") or "")[:500]}}]},
             "DOI":      {"rich_text": [{"text": {"content": (p.get("doi") or "")[:500]}}]},
             "Abstract": {"rich_text": [{"text": {"content": (p.get("abstract") or "")[:2000]}}]},
-            "Source":   {"rich_text": [{"text": {"content": p.get("tag", "")}}]},
+            "Source":   {"rich_text": [{"text": {"content": (p.get("tag", "") + score_tag)[:500]}}]},
             "Tier":     {"select":    {"name": tier}},
         }
         url = p.get("url", "")
@@ -516,6 +608,8 @@ def parse_args():
     p.add_argument("--target",      "-t", choices=["zotero", "notion", "both"], default="both")
     p.add_argument("--dry-run",     action="store_true", help="preview only, don't save")
     p.add_argument("--clear-cache", action="store_true", help="clear cache and re-fetch everything")
+    p.add_argument("--min-score",   type=int, default=0, metavar="N",
+                   help="only save papers with Claude relevance score >= N (0-10, default: 0 = no filter)")
     return p.parse_args()
 
 def main():
@@ -534,49 +628,100 @@ def main():
     else:
         print("[API] no key found, using anonymous access (stricter rate limits)")
 
-    since = (datetime.today() - timedelta(days=365)).strftime("%Y-%m-%d")
-    print(f"Search range: {since} → today\n")
+    research_focus = config.get("research_focus", "").strip()
+    anthropic_key  = config.get("anthropic", {}).get("api_key", "")
+    if research_focus:
+        preview = research_focus[:80] + ("..." if len(research_focus) > 80 else "")
+        print(f"[API] research_focus: {preview}")
 
-    cache, all_papers = load_cache(), []
+    since = (datetime.today() - timedelta(days=365)).strftime("%Y-%m-%d")
+    print(f"[config] search range: {since} → today")
+    print("━" * 60)
+
+    step       = 0
+    cache      = load_cache()
+    all_papers = []
+
+    # ── Fetch ─────────────────────────────────────────────────────────────────
 
     if args.mode in ("search", "all"):
+        step += 1
+        _log_step(step, "Keyword search (Tier 1 + 2)")
         if "search" in cache:
-            print(f"[cache] loaded {len(cache['search'])} keyword results")
+            print(f"  [cache] {len(cache['search'])} results loaded")
             all_papers.extend(cache["search"])
         else:
             papers = run_search(topics, since)
             cache["search"] = papers
             save_cache(cache)
             all_papers.extend(papers)
+        print(f"  → {len(all_papers)} papers total so far")
 
     if args.mode in ("authors", "all"):
+        step += 1
+        _log_step(step, "Scholar tracking (Tier 3 + 4)")
         if "authors" in cache:
-            print(f"[cache] loaded {len(cache['authors'])} scholar results")
+            print(f"  [cache] {len(cache['authors'])} results loaded")
             all_papers.extend(cache["authors"])
         else:
             papers = run_authors(topics, since)
             cache["authors"] = papers
             save_cache(cache)
             all_papers.extend(papers)
+        print(f"  → {len(all_papers)} papers total so far")
 
     if args.mode in ("journals", "all"):
+        step += 1
+        _log_step(step, "Journal sweep (Tier 5 — OpenAlex)")
         if "journals" in cache:
-            print(f"[cache] loaded {len(cache['journals'])} journal results")
+            print(f"  [cache] {len(cache['journals'])} results loaded")
             all_papers.extend(cache["journals"])
         else:
             papers = run_journals(since)
             cache["journals"] = papers
             save_cache(cache)
             all_papers.extend(papers)
+        print(f"  → {len(all_papers)} papers total so far")
+
+    # ── Filter ────────────────────────────────────────────────────────────────
 
     if args.mode == "all":
+        step += 1
+        before     = len(all_papers)
         all_papers = deduplicate(all_papers)
+        _log_step(step, "Cross-tier deduplication", len(all_papers),
+                  f"removed {before - len(all_papers)} duplicates")
 
+    step += 1
+    before     = len(all_papers)
     all_papers = filter_new(all_papers)
-    print(f"\n{len(all_papers)} new papers to save")
+    _log_step(step, "Filter already-saved papers", len(all_papers),
+              f"removed {before - len(all_papers)}")
+
     if not all_papers:
-        print("Nothing new. Done.")
+        print("\nNothing new. Done.")
         return
+
+    if research_focus:
+        step += 1
+        _log_step(step, f"Relevance scoring with Claude (min_score={args.min_score})")
+        all_papers = score_papers(
+            all_papers, research_focus,
+            min_score=args.min_score,
+            api_key=anthropic_key,
+        )
+        print(f"  → {len(all_papers)} papers after scoring")
+        if not all_papers:
+            print("\nAll papers filtered by relevance threshold. Done.")
+            return
+    elif args.min_score > 0:
+        print(f"\n[relevance] --min-score={args.min_score} ignored — no research_focus configured")
+
+    # ── Save ──────────────────────────────────────────────────────────────────
+
+    step += 1
+    _log_step(step, f"Save to {args.target}", len(all_papers))
+    print("━" * 60)
 
     if args.target in ("zotero", "both"):
         save_to_zotero(all_papers, config, dry_run=args.dry_run)

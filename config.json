@@ -1,4 +1,8 @@
 {
+  "research_focus": "Describe your research interests here — e.g. political communication, misinformation, social media and democracy, computational propaganda",
+  "anthropic": {
+    "api_key": "your_key_here"
+  },
   "semantic_scholar": {
     "api_key": "your_key_here"
   },
