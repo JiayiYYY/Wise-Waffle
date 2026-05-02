@@ -158,13 +158,31 @@ def normalize(paper, tag=""):
         pdf_url = paper["openAccessPdf"].get("url", "") or ""
 
     pub_date = paper.get("publicationDate") or paper.get("publication_date") or ""
+    abstract = paper.get("abstract", "") or ""
+
+    if not abstract and doi:
+        try:
+            r = requests.get(
+                f"https://api.openalex.org/works/https://doi.org/{doi}",
+                params={"select": "abstract_inverted_index"},
+                timeout=10,
+            )
+            if r.status_code == 200:
+                abstract = _openalex_rebuild_abstract(
+                    r.json().get("abstract_inverted_index")
+                )
+                if abstract:
+                    print(f"    [abstract] fetched from OpenAlex for {doi[:50]}")
+        except requests.RequestException:
+            pass
+        time.sleep(0.5)
 
     return {
         "title":    paper.get("title", "Untitled") or "Untitled",
         "authors":  authors,
         "year":     str(paper.get("year") or paper.get("publication_year") or ""),
         "pub_date": pub_date,
-        "abstract": paper.get("abstract", "") or "",
+        "abstract": abstract,
         "journal":  paper.get("venue") or paper.get("journal", "") or "",
         "doi":      doi,
         "url":      paper.get("url", "") or pdf_url,
