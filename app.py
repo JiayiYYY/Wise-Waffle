@@ -232,8 +232,9 @@ def _render_network(p, s2_key=""):
         st.info(_NO_DATA)
         return
 
-    refs = data.get("references") or []
-    cits = data.get("citations")  or []
+    refs    = data.get("references")    or []
+    cits    = data.get("citations")     or []
+    related = data.get("related_works") or []
 
     def _to_rows(items):
         rows = []
@@ -272,6 +273,19 @@ def _render_network(p, s2_key=""):
         )
     else:
         st.caption("No citing papers indexed yet — this paper may be too recent.")
+
+    st.markdown(f"**Related Papers ({len(related)})**")
+    if related:
+        st.dataframe(
+            _to_rows(related),
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "DOI": st.column_config.LinkColumn("DOI", display_text="↗ open"),
+            },
+        )
+    else:
+        st.caption("No related papers indexed.")
 
 COLLECTION_KEY_LABELS = {
     "tier1:ai_fairness_decolonial":          "Core — AI Fairness & Decolonial",

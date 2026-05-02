@@ -711,31 +711,37 @@ def fetch_openalex_network(doi, ref_limit=40, cit_limit=20):
     if not work.get("id"):
         return None
 
-    center       = _oa_normalize_work(work)
-    ref_ids_full = work.get("referenced_works") or []
-    cited_by_url = work.get("cited_by_api_url")  # may be None
+    center          = _oa_normalize_work(work)
+    ref_ids_full    = work.get("referenced_works") or []
+    related_ids_full = work.get("related_works")   or []
+    cited_by_url    = work.get("cited_by_api_url")  # may be None
 
-    # ── References — batch in groups of 20 ───────────────────────────────────
-    references = []
-    short_ids  = [rid.rsplit("/", 1)[-1] for rid in ref_ids_full[:ref_limit]]
-    for i in range(0, len(short_ids), 20):
-        batch = short_ids[i:i + 20]
-        try:
-            rr = requests.get(
-                "https://api.openalex.org/works",
-                params={
-                    "filter":   f"openalex:{'|'.join(batch)}",
-                    "per-page": 20,
-                    "select":   "id,title,doi,publication_year,authorships",
-                },
-                timeout=20,
-            )
-            if rr.status_code == 200:
-                references.extend(_oa_normalize_work(w) for w in rr.json().get("results", []))
-            else:
-                print(f"[openalex network] refs batch HTTP {rr.status_code}")
-        except requests.RequestException as e:
-            print(f"[openalex network] refs batch error: {e}")
+    def _resolve_ids(ids_full, limit, label):
+        """Batch-fetch OpenAlex works by ID in groups of 20."""
+        results = []
+        short_ids = [rid.rsplit("/", 1)[-1] for rid in ids_full[:limit]]
+        for i in range(0, len(short_ids), 20):
+            batch = short_ids[i:i + 20]
+            try:
+                rr = requests.get(
+                    "https://api.openalex.org/works",
+                    params={
+                        "filter":   f"openalex:{'|'.join(batch)}",
+                        "per-page": 20,
+                        "select":   "id,title,doi,publication_year,authorships",
+                    },
+                    timeout=20,
+                )
+                if rr.status_code == 200:
+                    results.extend(_oa_normalize_work(w) for w in rr.json().get("results", []))
+                else:
+                    print(f"[openalex network] {label} batch HTTP {rr.status_code}")
+            except requests.RequestException as e:
+                print(f"[openalex network] {label} batch error: {e}")
+        return results
+
+    references    = _resolve_ids(ref_ids_full,     ref_limit, "refs")
+    related_works = _resolve_ids(related_ids_full, ref_limit, "related")
 
     # ── Citing works ──────────────────────────────────────────────────────────
     citations = []
@@ -758,7 +764,12 @@ def fetch_openalex_network(doi, ref_limit=40, cit_limit=20):
     else:
         print("[openalex network] cited_by_api_url is None — skipping citations")
 
-    return {"center": center, "references": references, "citations": citations}
+    return {
+        "center":        center,
+        "references":    references,
+        "citations":     citations,
+        "related_works": related_works,
+    }
 
 # ── Save to Zotero ────────────────────────────────────────────────────────────
 
