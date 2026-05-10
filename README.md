@@ -1,7 +1,7 @@
 # Wise Waffle
 
 Academic literature tracker for researchers. Fetches new papers from Semantic Scholar and OpenAlex, scores them for relevance using Claude, and saves them to Zotero and/or Notion.
-
+Influenced & Inspired by @Cecilia https://github.com/CeciliaZhu1997/Scholar-Tracking
 ---
 
 ## Pipeline
