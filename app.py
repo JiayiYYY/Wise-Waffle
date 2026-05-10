@@ -338,7 +338,7 @@ def render_landing():
 
 <p><strong>Highlights:</strong></p>
 <ul>
-  <li>Time range: search from 30 to 365 days back</li>
+  <li>Time range: pick any date range up to 5 years back</li>
   <li>Connected papers: visualise citing and cited relationships</li>
   <li>Optional save to Zotero and/or Notion</li>
   <li>Relevance scoring by Claude against your written research focus</li>
@@ -712,7 +712,13 @@ Get a free API key at [semanticscholar.org/product/api](https://www.semanticscho
         target = st.selectbox("Save to", ["view", "both", "zotero", "notion"],
             format_func=lambda x: {"view": "View only (no save)", "both": "Zotero + Notion",
                                     "zotero": "Zotero only", "notion": "Notion only"}[x])
-        days_back = st.slider("Look back (days)", 30, 365, 365, step=30)
+        _today    = datetime.today().date()
+        date_from = st.date_input("From", value=_today - timedelta(days=30),
+                                  min_value=_today - timedelta(days=5*365), max_value=_today)
+        date_to   = st.date_input("To",   value=_today,
+                                  min_value=_today - timedelta(days=5*365), max_value=_today)
+        if date_from > date_to:
+            st.error("'From' date must not be after 'To'.")
         dry_run   = st.checkbox("Dry run (preview, don't save)", value=True)
 
         st.markdown("### Research Focus")
@@ -767,7 +773,7 @@ Get a free API key at [semanticscholar.org/product/api](https://www.semanticscho
 
     col_run, col_info = st.columns([1, 3])
     with col_run:
-        run_btn = st.button("▶ Run", disabled=not config_ok)
+        run_btn = st.button("▶ Run", disabled=not config_ok or date_from > date_to)
     with col_info:
         if not config_ok:
             st.warning("Enter your Semantic Scholar API key in the sidebar to start.")
@@ -783,13 +789,13 @@ Get a free API key at [semanticscholar.org/product/api](https://www.semanticscho
 
         config = build_config(s2_key, zotero_id, zotero_key, notion_tok, notion_db, collection_keys, anthropic_key)
         topics = load_json_safe(TOPICS_PATH) or {}
-        since  = (datetime.today() - timedelta(days=days_back)).strftime("%Y-%m-%d")
+        since  = date_from.strftime("%Y-%m-%d")
         pf.S2_HEADERS = {"x-api-key": s2_key} if s2_key else {}
 
         st.markdown("### Progress")
         log_container = st.empty()
         log_lines = st.session_state["log_lines"]
-        log_lines.append(f"Search range: {since} → today")
+        log_lines.append(f"Search range: {since} → {date_to.strftime('%Y-%m-%d')}")
 
         def update_log():
             log_text = "\n".join(log_lines[-80:])
@@ -925,7 +931,15 @@ def render_mode2():
             format_func=lambda x: {"view": "View only (no save)", "both": "Zotero + Notion",
                                     "zotero": "Zotero only", "notion": "Notion only"}[x],
             key="m2_target")
-        days_back = st.slider("Look back (days)", 30, 365, 365, step=30, key="m2_days_back")
+        _today_m2  = datetime.today().date()
+        date_from  = st.date_input("From", value=_today_m2 - timedelta(days=30),
+                                   min_value=_today_m2 - timedelta(days=5*365), max_value=_today_m2,
+                                   key="m2_date_from")
+        date_to    = st.date_input("To",   value=_today_m2,
+                                   min_value=_today_m2 - timedelta(days=5*365), max_value=_today_m2,
+                                   key="m2_date_to")
+        if date_from > date_to:
+            st.error("'From' date must not be after 'To'.")
         dry_run   = st.checkbox("Dry run (preview, don't save)", value=True, key="m2_dry_run")
 
         st.divider()
@@ -1012,7 +1026,7 @@ def render_mode2():
 
     col_run, col_info = st.columns([1, 3])
     with col_run:
-        run_btn = st.button("▶ Run", disabled=not config_ok, key="m2_run")
+        run_btn = st.button("▶ Run", disabled=not config_ok or date_from > date_to, key="m2_run")
     with col_info:
         if not config_ok:
             st.warning("Enter your Semantic Scholar API key in the sidebar to start.")
@@ -1034,13 +1048,13 @@ def render_mode2():
             st.session_state["results_page"]  = 1
             st.session_state["log_lines"]     = []
 
-            since = (datetime.today() - timedelta(days=days_back)).strftime("%Y-%m-%d")
+            since = date_from.strftime("%Y-%m-%d")
             pf.S2_HEADERS = {"x-api-key": s2_key} if s2_key else {}
 
             st.markdown("### Progress")
             log_container = st.empty()
             log_lines = st.session_state["log_lines"]
-            log_lines.append(f"Search range: {since} → today")
+            log_lines.append(f"Search range: {since} → {date_to.strftime('%Y-%m-%d')}")
 
             def update_log():
                 log_text = "\n".join(log_lines[-80:])
