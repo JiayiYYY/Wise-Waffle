@@ -705,10 +705,10 @@ Get a free API key at [semanticscholar.org/product/api](https://www.semanticscho
 
         st.divider()
         st.markdown("### Search Settings")
-        mode = st.selectbox("Mode", ["all", "search", "authors", "journals"],
-            format_func=lambda x: {"all": "All (keywords + scholars + journals)",
-                                    "search": "Keywords only", "authors": "Scholars only",
-                                    "journals": "Journals only"}[x])
+        st.caption("Tiers to run")
+        run_keywords     = st.checkbox("Keywords (Tier 1+2)",  value=True, key="m1_run_keywords")
+        run_scholars     = st.checkbox("Scholars (Tier 3+4)",  value=True, key="m1_run_scholars")
+        run_journals_chk = st.checkbox("Journals (Tier 5)",    value=True, key="m1_run_journals")
         target = st.selectbox("Save to", ["view", "both", "zotero", "notion"],
             format_func=lambda x: {"view": "View only (no save)", "both": "Zotero + Notion",
                                     "zotero": "Zotero only", "notion": "Notion only"}[x])
@@ -780,6 +780,28 @@ Get a free API key at [semanticscholar.org/product/api](https://www.semanticscho
         elif dry_run:
             st.info("Dry run — results shown but nothing saved.")
 
+    with st.expander("Add to this run (optional)"):
+        st.caption("Extra inputs for this run only — not saved to topics.json.")
+        xc1, xc2, xc3 = st.columns(3)
+        with xc1:
+            st.markdown("**Extra keywords**")
+            st.caption("One per line")
+            extra_keywords_raw = st.text_area("Extra keywords", height=120, key="m1_extra_keywords",
+                label_visibility="collapsed",
+                placeholder="social media wellbeing\nalgorithmic fairness")
+        with xc2:
+            st.markdown("**Extra scholars**")
+            st.caption("Name or S2 Author ID, one per line")
+            extra_scholars_raw = st.text_area("Extra scholars", height=120, key="m1_extra_scholars",
+                label_visibility="collapsed",
+                placeholder="Amy Orben\n1234567890")
+        with xc3:
+            st.markdown("**Extra journals**")
+            st.caption("Name or OpenAlex Source ID, one per line")
+            extra_journals_raw = st.text_area("Extra journals", height=120, key="m1_extra_journals",
+                label_visibility="collapsed",
+                placeholder="Journal of Communication\nS12345678")
+
     if run_btn:
         st.session_state["results"]       = []
         st.session_state["saved_this"]    = 0
@@ -804,6 +826,9 @@ Get a free API key at [semanticscholar.org/product/api](https://www.semanticscho
                 f'font-size:0.75rem;padding:1rem;border-radius:4px;height:220px;overflow-y:auto;">'
                 f'<pre>{log_text}</pre></div>', unsafe_allow_html=True)
 
+        def _log_step(msg):
+            log_lines.append(msg); update_log()
+
         original_print = builtins.print
         def patched_print(*args, **kwargs):
             log_lines.append(" ".join(str(a) for a in args))
@@ -811,19 +836,42 @@ Get a free API key at [semanticscholar.org/product/api](https://www.semanticscho
             original_print(*args, **kwargs)
         builtins.print = patched_print
 
+        extra_keywords   = [l.strip() for l in extra_keywords_raw.splitlines() if l.strip()]
+        extra_scholars   = [l.strip() for l in extra_scholars_raw.splitlines() if l.strip()]
+        extra_journals_l = [l.strip() for l in extra_journals_raw.splitlines() if l.strip()]
+
         try:
             with st.spinner("Fetching papers…"):
                 all_papers = []
-                if mode in ("search", "all"):
-                    log_lines.append("\n── Tier 1 & 2: Keyword search ──"); update_log()
+                if run_keywords:
+                    _log_step("\n── Tier 1 & 2: Keyword search ──")
                     all_papers.extend(pf.run_search(topics, since))
-                if mode in ("authors", "all"):
-                    log_lines.append("\n── Tier 3 & 4: Scholar tracking ──"); update_log()
+                else:
+                    _log_step("── Tier 1 & 2: skipped ──")
+                if run_scholars:
+                    _log_step("\n── Tier 3 & 4: Scholar tracking ──")
                     all_papers.extend(pf.run_authors(topics, since))
-                if mode in ("journals", "all"):
-                    log_lines.append("\n── Tier 5: Journal sweep ──"); update_log()
+                else:
+                    _log_step("── Tier 3 & 4: skipped ──")
+                if run_journals_chk:
+                    _log_step("\n── Tier 5: Journal sweep ──")
                     all_papers.extend(pf.run_journals(since))
-                if mode == "all":
+                else:
+                    _log_step("── Tier 5: skipped ──")
+                if sum([run_keywords, run_scholars, run_journals_chk]) > 1:
+                    all_papers = pf.deduplicate(all_papers)
+
+                if extra_keywords:
+                    _log_step(f"\n── Extra keywords: {len(extra_keywords)} term(s) ──")
+                    xk = pf.run_keywords_flexible(extra_keywords, since)
+                    all_papers.extend(xk)
+                if extra_scholars:
+                    _log_step(f"\n── Extra scholars: {len(extra_scholars)} ──")
+                    all_papers.extend(pf.run_authors_flexible(extra_scholars, since))
+                if extra_journals_l:
+                    _log_step(f"\n── Extra journals: {len(extra_journals_l)} ──")
+                    all_papers.extend(pf.run_journals_flexible(extra_journals_l, since))
+                if extra_keywords or extra_scholars or extra_journals_l:
                     all_papers = pf.deduplicate(all_papers)
 
                 if research_focus_input.strip():
