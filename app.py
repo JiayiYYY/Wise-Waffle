@@ -779,6 +779,8 @@ Get a free API key at [semanticscholar.org/product/api](https://www.semanticscho
             st.warning("Enter your Semantic Scholar API key in the sidebar to start.")
         elif dry_run:
             st.info("Dry run — results shown but nothing saved.")
+        if research_focus_input.strip() and anthropic_key and (date_to - date_from).days > 90:
+            st.warning("Scoring is enabled for a large date range. This may take a long time and incur API costs. Consider reducing the date range or disabling scoring.")
 
     with st.expander("Add to this run (optional)"):
         st.caption("Extra inputs for this run only — not saved to topics.json.")
@@ -1086,6 +1088,8 @@ def render_mode2():
             st.warning("Enter your Semantic Scholar API key in the sidebar to start.")
         elif dry_run:
             st.info("Dry run — results shown but nothing saved.")
+        if research_focus_input.strip() and anthropic_key and (date_to - date_from).days > 90:
+            st.warning("Scoring is enabled for a large date range. This may take a long time and incur API costs. Consider reducing the date range or disabling scoring.")
 
     if run_btn:
         keywords         = [l.strip() for l in keywords_raw.splitlines()         if l.strip()]

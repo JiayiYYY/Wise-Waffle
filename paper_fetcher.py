@@ -621,16 +621,44 @@ def _get_topic_key(tag):
 # ── Claude relevance scoring ──────────────────────────────────────────────────
 
 def score_papers(papers, research_focus, min_score=0, api_key="", batch_size=10):
-    """Score papers for relevance using Claude API; filter to >= min_score if min_score > 0."""
+    """Score papers for relevance using Claude API; filter to >= min_score if min_score > 0.
+
+    Papers are scored in tiered priority order: tier1 → scholars → journals → crossover.
+    Each tier is capped at 100 papers; total hard cap is 400.
+    """
     try:
         import anthropic
     except ImportError:
         print("[relevance] 'anthropic' not installed — pip install anthropic")
         return papers
 
+    GROUP_CAP = 100
+    TOTAL_CAP = 400
+
+    def _tag_in(p, *fragments):
+        tag = p.get("tag", "")
+        return any(f in tag for f in fragments)
+
+    g_tier1     = [p for p in papers if _tag_in(p, "tier1", "core")][:GROUP_CAP]
+    g_scholars  = [p for p in papers if _tag_in(p, "scholar", "ascor")
+                   and not _tag_in(p, "tier1", "core")][:GROUP_CAP]
+    g_journals  = [p for p in papers if _tag_in(p, "journal", "tier5")
+                   and not _tag_in(p, "tier1", "core")
+                   and not _tag_in(p, "scholar", "ascor")][:GROUP_CAP]
+    g_crossover = [p for p in papers if _tag_in(p, "crossover", "tier2")
+                   and not _tag_in(p, "tier1", "core")
+                   and not _tag_in(p, "scholar", "ascor")
+                   and not _tag_in(p, "journal", "tier5")][:GROUP_CAP]
+
+    selected = (g_tier1 + g_scholars + g_journals + g_crossover)[:TOTAL_CAP]
+    n1, n2, n3, n4 = len(g_tier1), len(g_scholars), len(g_journals), len(g_crossover)
+
+    print(f"\n[relevance] {len(selected)} papers queued for scoring "
+          f"(tier1: {n1}, scholars: {n2}, journals: {n3}, crossover: {n4})")
+
     client    = anthropic.Anthropic(api_key=api_key) if api_key else anthropic.Anthropic()
-    n_batches = (len(papers) + batch_size - 1) // batch_size
-    print(f"\n[relevance] scoring {len(papers)} papers in {n_batches} batches...")
+    n_batches = (len(selected) + batch_size - 1) // batch_size
+    print(f"[relevance] scoring in {n_batches} batch(es)...")
 
     system_block = {
         "type": "text",
@@ -647,8 +675,8 @@ def score_papers(papers, research_focus, min_score=0, api_key="", batch_size=10)
     }
 
     scored = []
-    for i in range(0, len(papers), batch_size):
-        batch   = papers[i : i + batch_size]
+    for i in range(0, len(selected), batch_size):
+        batch   = selected[i : i + batch_size]
         payload = [
             {"index": j, "title": p["title"], "abstract": (p["abstract"] or "")[:800]}
             for j, p in enumerate(batch)
@@ -685,8 +713,9 @@ def score_papers(papers, research_focus, min_score=0, api_key="", batch_size=10)
         before = len(scored)
         scored = [p for p in scored if p.get("relevance_score", 0) >= min_score]
         print(f"[relevance] {before} → {len(scored)} after min_score={min_score} filter")
-    else:
-        print(f"[relevance] {len(scored)} papers scored, no threshold filter applied")
+
+    print(f"[scoring] {len(scored)} papers scored "
+          f"(tier1: {n1}, scholars: {n2}, journals: {n3}, crossover: {n4})")
 
     return scored
 
