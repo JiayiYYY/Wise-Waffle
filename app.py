@@ -1061,6 +1061,11 @@ def render_mode2():
         journals_raw = st.text_area("Journals", height=110, key="m2_journals",
             placeholder="Journal of Communication\nNew Media & Society\nComputers in Human Behavior",
             label_visibility="collapsed")
+        st.markdown("**Journal search terms** *(optional, 3–5 terms recommended)*")
+        st.caption("Filters results within the journals above. Leave blank to fetch all recent papers (slower).")
+        journal_keywords_raw = st.text_area("Journal search terms (optional, 3-5 terms recommended)", height=80, key="m2_journal_keywords",
+            placeholder="social media\nalgorithmic curation\nmisinformation",
+            label_visibility="collapsed")
 
 
     st.markdown("### Research Focus *(optional)*")
@@ -1091,6 +1096,7 @@ def render_mode2():
         crossovers       = [l.strip() for l in crossover_raw.splitlines()       if l.strip()]
         scholars         = [l.strip() for l in scholars_raw.splitlines()        if l.strip()]
         journals         = [l.strip() for l in journals_raw.splitlines()        if l.strip()]
+        journal_keywords = [l.strip() for l in journal_keywords_raw.splitlines() if l.strip()]
 
         if not any([keywords, crossovers, scholars, journals]):
             st.warning("Enter at least one keyword, scholar, or journal to search.")
@@ -1144,7 +1150,7 @@ def render_mode2():
 
                     if journals:
                         log_lines.append(f"\n── Journals: {len(journals)} name(s) ──"); update_log()
-                        all_papers.extend(pf.run_journals_flexible(journals, since))
+                        all_papers.extend(pf.run_journals_flexible(journals, since, keywords=journal_keywords or None))
 
                     all_papers = pf.deduplicate(all_papers)
                     log_lines.append(f"\n{len(all_papers)} papers after cross-source dedup"); update_log()
