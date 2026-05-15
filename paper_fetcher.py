@@ -27,6 +27,8 @@ S2_BULK_SEARCH   = f"{S2_BASE}/paper/search/bulk"
 S2_AUTHOR_SEARCH = f"{S2_BASE}/author/search"
 PAPER_FIELDS     = "title,authors,year,abstract,externalIds,venue,publicationDate,url,openAccessPdf,publicationTypes"
 
+OA_HEADERS = {"User-Agent": "mailto:jiayi.yan0124@gmail.com"}
+
 # ── Config ────────────────────────────────────────────────────────────────────
 
 def load_json(path):
@@ -499,7 +501,7 @@ def _openalex_source_id_by_name(journal_name):
     url    = "https://api.openalex.org/sources"
     params = {"search": journal_name, "select": "id,display_name,works_count", "per-page": 5}
     try:
-        r = requests.get(url, params=params, timeout=10)
+        r = requests.get(url, params=params, headers=OA_HEADERS, timeout=10)
         if r.status_code == 200:
             hits = r.json().get("results", [])
             if hits:
@@ -524,7 +526,8 @@ def _fetch_openalex_by_source_id(journal_name, source_id, since, tag="flex:journ
         if keyword:
             params["search"] = keyword
         try:
-            r = requests.get("https://api.openalex.org/works", params=params, timeout=20)
+            r = requests.get("https://api.openalex.org/works", params=params,
+                             headers=OA_HEADERS, timeout=20)
         except requests.RequestException as e:
             print(f"    [openalex] network error: {e}")
             break
@@ -532,7 +535,8 @@ def _fetch_openalex_by_source_id(journal_name, source_id, since, tag="flex:journ
             print("    [rate limit] pausing...")
             time.sleep(10)
             try:
-                r = requests.get("https://api.openalex.org/works", params=params, timeout=20)
+                r = requests.get("https://api.openalex.org/works", params=params,
+                                 headers=OA_HEADERS, timeout=20)
             except requests.RequestException as e:
                 print(f"    [openalex] network error: {e}")
                 break
@@ -575,7 +579,6 @@ def _fetch_openalex_by_source_id(journal_name, source_id, since, tag="flex:journ
         if len(results) < 100:
             break
         page += 1
-        time.sleep(0.8)
     return [normalize(p, tag=tag) for p in all_results]
 
 
@@ -612,7 +615,6 @@ def run_journals_flexible(journal_names, since, keywords=None):
         kw_note = f" ({len(keywords)} keywords OR-joined)" if keywords else ""
         print(f"    {label[:50]}: {len(papers)} papers found{kw_note}")
         collected.extend(papers)
-        time.sleep(1)
 
     deduped = deduplicate(collected)
     print(f"\n[flex:journals] {len(deduped)} papers after dedup")
