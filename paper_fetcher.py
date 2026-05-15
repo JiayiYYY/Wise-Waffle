@@ -585,11 +585,13 @@ def run_journals_flexible(journal_names, since, keywords=None):
     Entries matching the pattern S\\d+ are used as Source IDs directly, skipping
     the name-lookup step.  All other entries are resolved by name.
 
-    If keywords are provided, one API call is made per journal × keyword combination
-    and results are deduplicated.  Without keywords, all recent articles are fetched.
+    If keywords are provided, all keywords are OR-joined into a single search query per
+    journal (one API call per journal instead of one per keyword).  Without keywords,
+    all recent articles are fetched.
     """
     collected = []
-    kw_list   = keywords if keywords else [None]
+    combined_search = (" OR ".join(kw.strip() for kw in keywords if kw.strip())
+                       if keywords else None)
     print("\n[flex:journals] OpenAlex sweep")
     for entry in journal_names:
         entry = entry.strip()
@@ -605,16 +607,12 @@ def run_journals_flexible(journal_names, since, keywords=None):
                 print(f"    {entry[:50]}: not found in OpenAlex — skipping")
                 continue
 
-        journal_papers = []
-        for kw in kw_list:
-            papers = _fetch_openalex_by_source_id(label, source_id, since, tag="flex:journal", keyword=kw)
-            journal_papers.extend(papers)
-            time.sleep(1)
-
-        journal_papers = deduplicate(journal_papers)
-        kw_note = f" across {len(kw_list)} keyword{'s' if len(kw_list) != 1 else ''}" if keywords else ""
-        print(f"    {label[:50]}: {len(journal_papers)} papers found{kw_note}")
-        collected.extend(journal_papers)
+        papers  = _fetch_openalex_by_source_id(label, source_id, since,
+                                                tag="flex:journal", keyword=combined_search)
+        kw_note = f" ({len(keywords)} keywords OR-joined)" if keywords else ""
+        print(f"    {label[:50]}: {len(papers)} papers found{kw_note}")
+        collected.extend(papers)
+        time.sleep(1)
 
     deduped = deduplicate(collected)
     print(f"\n[flex:journals] {len(deduped)} papers after dedup")
