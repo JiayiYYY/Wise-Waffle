@@ -1143,9 +1143,8 @@ def render_mode2():
                         all_papers.extend(pf.run_authors_flexible(scholars, since))
 
                     if journals:
-                        kw_label = f" × {len(keywords)} keyword(s)" if keywords else ""
-                        log_lines.append(f"\n── Journals: {len(journals)} name(s){kw_label} ──"); update_log()
-                        all_papers.extend(pf.run_journals_flexible(journals, since, keywords=keywords or None))
+                        log_lines.append(f"\n── Journals: {len(journals)} name(s) ──"); update_log()
+                        all_papers.extend(pf.run_journals_flexible(journals, since))
 
                     all_papers = pf.deduplicate(all_papers)
                     log_lines.append(f"\n{len(all_papers)} papers after cross-source dedup"); update_log()
@@ -1155,6 +1154,10 @@ def render_mode2():
                             log_lines.append(f"\n── Scoring {len(all_papers)} papers with Claude ──"); update_log()
                             all_papers = pf.score_papers(all_papers, research_focus_input.strip(), api_key=anthropic_key)
                             log_lines.append(f"{len(all_papers)} papers after scoring"); update_log()
+                            before_filter = len(all_papers)
+                            all_papers = [p for p in all_papers
+                                          if p.get("relevance_score") is None or p.get("relevance_score", 0) >= 6]
+                            log_lines.append(f"{len(all_papers)} papers kept (score ≥ 6, was {before_filter})"); update_log()
                         else:
                             log_lines.append("[relevance] Anthropic API key not set — skipping scoring"); update_log()
 

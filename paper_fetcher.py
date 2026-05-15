@@ -646,7 +646,7 @@ def score_papers(papers, research_focus, min_score=0, api_key="", batch_size=10)
     """Score papers for relevance using Claude API; filter to >= min_score if min_score > 0.
 
     Papers are scored in tiered priority order: tier1 → scholars → journals → crossover.
-    Each tier is capped at 100 papers; total hard cap is 500.
+    All papers are scored up to TOTAL_CAP=500 with no per-group limit.
     """
     try:
         import anthropic
@@ -654,28 +654,27 @@ def score_papers(papers, research_focus, min_score=0, api_key="", batch_size=10)
         print("[relevance] 'anthropic' not installed — pip install anthropic")
         return papers
 
-    GROUP_CAP = 100
     TOTAL_CAP = 500
-    print(f"[scoring] TOTAL_CAP={TOTAL_CAP}, GROUP_CAP={GROUP_CAP}")
+    print(f"[scoring] TOTAL_CAP={TOTAL_CAP}")
 
     def _tag_in(p, *fragments):
         tag = p.get("tag", "")
         return any(f in tag for f in fragments)
 
     # "keyword" covers flex:keyword (Mode 2 direct keyword search → same priority as tier1)
-    g_tier1     = [p for p in papers if _tag_in(p, "tier1", "core", "keyword")][:GROUP_CAP]
+    g_tier1     = [p for p in papers if _tag_in(p, "tier1", "core", "keyword")]
     g_scholars  = [p for p in papers if _tag_in(p, "scholar", "ascor")
-                   and not _tag_in(p, "tier1", "core", "keyword")][:GROUP_CAP]
+                   and not _tag_in(p, "tier1", "core", "keyword")]
     g_journals  = [p for p in papers if _tag_in(p, "journal", "tier5")
                    and not _tag_in(p, "tier1", "core", "keyword")
-                   and not _tag_in(p, "scholar", "ascor")][:GROUP_CAP]
+                   and not _tag_in(p, "scholar", "ascor")]
     g_crossover = [p for p in papers if _tag_in(p, "crossover", "tier2")
                    and not _tag_in(p, "tier1", "core", "keyword")
                    and not _tag_in(p, "scholar", "ascor")
-                   and not _tag_in(p, "journal", "tier5")][:GROUP_CAP]
+                   and not _tag_in(p, "journal", "tier5")]
 
     matched   = set(id(p) for p in g_tier1 + g_scholars + g_journals + g_crossover)
-    g_other   = [p for p in papers if id(p) not in matched][:GROUP_CAP]
+    g_other   = [p for p in papers if id(p) not in matched]
 
     selected = (g_tier1 + g_scholars + g_journals + g_crossover + g_other)[:TOTAL_CAP]
     n1, n2, n3, n4, n5 = (len(g_tier1), len(g_scholars), len(g_journals),
