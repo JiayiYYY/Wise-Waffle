@@ -1142,12 +1142,16 @@ def render_mode2():
                         log_lines.append(f"\n── Scholars: {len(scholars)} name(s) ──"); update_log()
                         all_papers.extend(pf.run_authors_flexible(scholars, since))
 
-                    if journals:
-                        log_lines.append(f"\n── Journals: {len(journals)} name(s) ──"); update_log()
-                        all_papers.extend(pf.run_journals_flexible(journals, since))
-
                     all_papers = pf.deduplicate(all_papers)
                     log_lines.append(f"\n{len(all_papers)} papers after cross-source dedup"); update_log()
+
+                    if journals:
+                        journals_lower = [j.lower() for j in journals]
+                        all_papers = [
+                            p for p in all_papers
+                            if any(j in (p.get("venue") or p.get("journal") or "").lower() for j in journals_lower)
+                        ]
+                        log_lines.append(f"\n── Journal filter: {len(journals)} journals → {len(all_papers)} papers matched ──"); update_log()
 
                     if research_focus_input.strip():
                         if anthropic_key:
