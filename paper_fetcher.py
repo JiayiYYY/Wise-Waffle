@@ -513,7 +513,6 @@ def _openalex_source_id_by_name(journal_name):
 def _fetch_openalex_by_source_id(journal_name, source_id, since, tag="flex:journal", keyword=None):
     """Paginate OpenAlex works for a given source ID and return normalized papers."""
     all_results, page = [], 1
-    rate_limited = False
     while True:
         params = {
             "filter":   f"primary_location.source.id:{source_id},from_publication_date:{since},type:article",
@@ -530,13 +529,16 @@ def _fetch_openalex_by_source_id(journal_name, source_id, since, tag="flex:journ
             print(f"    [openalex] network error: {e}")
             break
         if r.status_code == 429:
-            if not rate_limited:
-                print("    [rate limit] pausing...")
-                rate_limited = True
-            time.sleep(30)
-            continue
-        rate_limited = False
-        if r.status_code != 200:
+            print("    [rate limit] pausing...")
+            time.sleep(10)
+            try:
+                r = requests.get("https://api.openalex.org/works", params=params, timeout=20)
+            except requests.RequestException as e:
+                print(f"    [openalex] network error: {e}")
+                break
+            if r.status_code != 200:
+                break
+        elif r.status_code != 200:
             break
         data    = r.json()
         results = data.get("results", [])
@@ -606,7 +608,7 @@ def run_journals_flexible(journal_names, since, keywords=None):
         for kw in kw_list:
             papers = _fetch_openalex_by_source_id(label, source_id, since, tag="flex:journal", keyword=kw)
             journal_papers.extend(papers)
-            time.sleep(0.5)
+            time.sleep(1)
 
         journal_papers = deduplicate(journal_papers)
         kw_note = f" across {len(kw_list)} keyword{'s' if len(kw_list) != 1 else ''}" if keywords else ""
