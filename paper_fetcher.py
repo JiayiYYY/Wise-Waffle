@@ -491,19 +491,26 @@ def run_authors_flexible(author_names, since, papers_per_author=15):
 
 
 def _openalex_source_id_by_name(journal_name):
-    """Return the short OpenAlex source ID (e.g. 'S123456789') for a journal name."""
+    """Return the short OpenAlex source ID (e.g. 'S123456789') for a journal name.
+
+    Fetches up to 5 candidates and picks the one with the highest works_count so
+    that common abbreviations or variant names resolve to the canonical source.
+    """
+    url    = "https://api.openalex.org/sources"
+    params = {"search": journal_name, "select": "id,display_name,works_count", "per-page": 5}
+    print(f"    [openalex] GET {url}?search={journal_name}")
     try:
-        r = requests.get(
-            "https://api.openalex.org/sources",
-            params={"search": journal_name, "select": "id,display_name", "per-page": 1},
-            timeout=10,
-        )
+        r = requests.get(url, params=params, timeout=10)
+        print(f"    [openalex] status={r.status_code} body={r.text[:300]}")
         if r.status_code == 200:
             hits = r.json().get("results", [])
             if hits:
-                return hits[0]["id"].split("/")[-1]
-    except Exception:
-        pass
+                best = max(hits, key=lambda h: h.get("works_count") or 0)
+                print(f"    [openalex] best match: '{best.get('display_name')}' "
+                      f"(works_count={best.get('works_count')})")
+                return best["id"].split("/")[-1]
+    except Exception as e:
+        print(f"    [openalex] error: {e}")
     return None
 
 
@@ -639,22 +646,27 @@ def score_papers(papers, research_focus, min_score=0, api_key="", batch_size=10)
         tag = p.get("tag", "")
         return any(f in tag for f in fragments)
 
-    g_tier1     = [p for p in papers if _tag_in(p, "tier1", "core")][:GROUP_CAP]
+    # "keyword" covers flex:keyword (Mode 2 direct keyword search → same priority as tier1)
+    g_tier1     = [p for p in papers if _tag_in(p, "tier1", "core", "keyword")][:GROUP_CAP]
     g_scholars  = [p for p in papers if _tag_in(p, "scholar", "ascor")
-                   and not _tag_in(p, "tier1", "core")][:GROUP_CAP]
+                   and not _tag_in(p, "tier1", "core", "keyword")][:GROUP_CAP]
     g_journals  = [p for p in papers if _tag_in(p, "journal", "tier5")
-                   and not _tag_in(p, "tier1", "core")
+                   and not _tag_in(p, "tier1", "core", "keyword")
                    and not _tag_in(p, "scholar", "ascor")][:GROUP_CAP]
     g_crossover = [p for p in papers if _tag_in(p, "crossover", "tier2")
-                   and not _tag_in(p, "tier1", "core")
+                   and not _tag_in(p, "tier1", "core", "keyword")
                    and not _tag_in(p, "scholar", "ascor")
                    and not _tag_in(p, "journal", "tier5")][:GROUP_CAP]
 
-    selected = (g_tier1 + g_scholars + g_journals + g_crossover)[:TOTAL_CAP]
-    n1, n2, n3, n4 = len(g_tier1), len(g_scholars), len(g_journals), len(g_crossover)
+    matched   = set(id(p) for p in g_tier1 + g_scholars + g_journals + g_crossover)
+    g_other   = [p for p in papers if id(p) not in matched][:GROUP_CAP]
+
+    selected = (g_tier1 + g_scholars + g_journals + g_crossover + g_other)[:TOTAL_CAP]
+    n1, n2, n3, n4, n5 = (len(g_tier1), len(g_scholars), len(g_journals),
+                           len(g_crossover), len(g_other))
 
     print(f"\n[relevance] {len(selected)} papers queued for scoring "
-          f"(tier1: {n1}, scholars: {n2}, journals: {n3}, crossover: {n4})")
+          f"(tier1: {n1}, scholars: {n2}, journals: {n3}, crossover: {n4}, other: {n5})")
 
     client    = anthropic.Anthropic(api_key=api_key) if api_key else anthropic.Anthropic()
     n_batches = (len(selected) + batch_size - 1) // batch_size
@@ -715,7 +727,7 @@ def score_papers(papers, research_focus, min_score=0, api_key="", batch_size=10)
         print(f"[relevance] {before} → {len(scored)} after min_score={min_score} filter")
 
     print(f"[scoring] {len(scored)} papers scored "
-          f"(tier1: {n1}, scholars: {n2}, journals: {n3}, crossover: {n4})")
+          f"(tier1: {n1}, scholars: {n2}, journals: {n3}, crossover: {n4}, other: {n5})")
 
     return scored
 
