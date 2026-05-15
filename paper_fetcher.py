@@ -540,6 +540,11 @@ def _fetch_openalex_by_source_id(journal_name, source_id, since, tag="flex:journ
                 break
         elif r.status_code != 200:
             break
+
+        if keyword and page == 1:
+            print(f"    [debug] URL: {r.url}")
+            print(f"    [debug] status={r.status_code} body={r.text[:400]}")
+
         data    = r.json()
         results = data.get("results", [])
         if not results:
@@ -639,7 +644,7 @@ def score_papers(papers, research_focus, min_score=0, api_key="", batch_size=10)
     """Score papers for relevance using Claude API; filter to >= min_score if min_score > 0.
 
     Papers are scored in tiered priority order: tier1 → scholars → journals → crossover.
-    Each tier is capped at 100 papers; total hard cap is 400.
+    Each tier is capped at 100 papers; total hard cap is 500.
     """
     try:
         import anthropic
@@ -648,7 +653,7 @@ def score_papers(papers, research_focus, min_score=0, api_key="", batch_size=10)
         return papers
 
     GROUP_CAP = 100
-    TOTAL_CAP = 400
+    TOTAL_CAP = 500
 
     def _tag_in(p, *fragments):
         tag = p.get("tag", "")
