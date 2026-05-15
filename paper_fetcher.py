@@ -507,7 +507,7 @@ def _openalex_source_id_by_name(journal_name):
     return None
 
 
-def _fetch_openalex_by_source_id(journal_name, source_id, since, tag="flex:journal"):
+def _fetch_openalex_by_source_id(journal_name, source_id, since, tag="flex:journal", keyword=None):
     """Paginate OpenAlex works for a given source ID and return normalized papers."""
     all_results, page = [], 1
     while True:
@@ -518,6 +518,8 @@ def _fetch_openalex_by_source_id(journal_name, source_id, since, tag="flex:journ
             "select":   "title,authorships,publication_date,publication_year,doi,"
                         "abstract_inverted_index,primary_location,open_access,id",
         }
+        if keyword:
+            params["search"] = keyword
         try:
             r = requests.get("https://api.openalex.org/works", params=params, timeout=20)
         except requests.RequestException as e:
@@ -565,13 +567,17 @@ def _fetch_openalex_by_source_id(journal_name, source_id, since, tag="flex:journ
     return [normalize(p, tag=tag) for p in all_results]
 
 
-def run_journals_flexible(journal_names, since):
+def run_journals_flexible(journal_names, since, keywords=None):
     """Sweep journals supplied by name or OpenAlex Source ID (e.g. S12345678).
 
     Entries matching the pattern S\\d+ are used as Source IDs directly, skipping
     the name-lookup step.  All other entries are resolved by name.
+
+    If keywords are provided, one API call is made per journal × keyword combination
+    and results are deduplicated.  Without keywords, all recent articles are fetched.
     """
     collected = []
+    kw_list = keywords if keywords else [None]
     print("\n[flex:journals] OpenAlex sweep")
     for entry in journal_names:
         entry = entry.strip()
@@ -588,9 +594,12 @@ def run_journals_flexible(journal_names, since):
                 print(f"    {entry[:50]}: not found in OpenAlex — skipping")
                 continue
             print(f"    {entry[:50]}: resolved to {source_id}")
-        papers = _fetch_openalex_by_source_id(label, source_id, since, tag="flex:journal")
-        collected.extend(papers)
-        time.sleep(0.5)
+        for kw in kw_list:
+            if kw:
+                print(f"    {label[:40]} × keyword '{kw}'")
+            papers = _fetch_openalex_by_source_id(label, source_id, since, tag="flex:journal", keyword=kw)
+            collected.extend(papers)
+            time.sleep(0.5)
     deduped = deduplicate(collected)
     print(f"\n[flex:journals] {len(deduped)} papers after dedup")
     return deduped

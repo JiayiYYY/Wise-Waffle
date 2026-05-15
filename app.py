@@ -1060,6 +1060,12 @@ def render_mode2():
             placeholder="Journal of Communication\nNew Media & Society\nComputers in Human Behavior",
             label_visibility="collapsed")
 
+        st.markdown("**Journal keywords** *(optional)*")
+        st.caption("Searches within the journals above. Leave blank to fetch all recent papers. One per line.")
+        journal_keywords_raw = st.text_area("Journal keywords", height=90, key="m2_journal_keywords",
+            placeholder="social media\ngender identity",
+            label_visibility="collapsed")
+
     st.markdown("### Research Focus *(optional)*")
     st.caption("Claude scores each paper 0–10 for relevance. Requires an Anthropic key in the sidebar.")
     research_focus_input = st.text_area(
@@ -1082,10 +1088,11 @@ def render_mode2():
             st.info("Dry run — results shown but nothing saved.")
 
     if run_btn:
-        keywords   = [l.strip() for l in keywords_raw.splitlines()  if l.strip()]
-        crossovers = [l.strip() for l in crossover_raw.splitlines() if l.strip()]
-        scholars   = [l.strip() for l in scholars_raw.splitlines()  if l.strip()]
-        journals   = [l.strip() for l in journals_raw.splitlines()  if l.strip()]
+        keywords         = [l.strip() for l in keywords_raw.splitlines()         if l.strip()]
+        crossovers       = [l.strip() for l in crossover_raw.splitlines()       if l.strip()]
+        scholars         = [l.strip() for l in scholars_raw.splitlines()        if l.strip()]
+        journals         = [l.strip() for l in journals_raw.splitlines()        if l.strip()]
+        journal_keywords = [l.strip() for l in journal_keywords_raw.splitlines() if l.strip()]
 
         if not any([keywords, crossovers, scholars, journals]):
             st.warning("Enter at least one keyword, scholar, or journal to search.")
@@ -1138,8 +1145,9 @@ def render_mode2():
                         all_papers.extend(pf.run_authors_flexible(scholars, since))
 
                     if journals:
-                        log_lines.append(f"\n── Journals: {len(journals)} name(s) ──"); update_log()
-                        all_papers.extend(pf.run_journals_flexible(journals, since))
+                        kw_label = f" × {len(journal_keywords)} keyword(s)" if journal_keywords else ""
+                        log_lines.append(f"\n── Journals: {len(journals)} name(s){kw_label} ──"); update_log()
+                        all_papers.extend(pf.run_journals_flexible(journals, since, keywords=journal_keywords or None))
 
                     all_papers = pf.deduplicate(all_papers)
                     log_lines.append(f"\n{len(all_papers)} papers after cross-source dedup"); update_log()
