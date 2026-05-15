@@ -498,25 +498,22 @@ def _openalex_source_id_by_name(journal_name):
     """
     url    = "https://api.openalex.org/sources"
     params = {"search": journal_name, "select": "id,display_name,works_count", "per-page": 5}
-    print(f"    [openalex] GET {url}?search={journal_name}")
     try:
         r = requests.get(url, params=params, timeout=10)
-        print(f"    [openalex] status={r.status_code} body={r.text[:300]}")
         if r.status_code == 200:
             hits = r.json().get("results", [])
             if hits:
                 best = max(hits, key=lambda h: h.get("works_count") or 0)
-                print(f"    [openalex] best match: '{best.get('display_name')}' "
-                      f"(works_count={best.get('works_count')})")
                 return best["id"].split("/")[-1]
     except Exception as e:
-        print(f"    [openalex] error: {e}")
+        print(f"    [openalex] error resolving '{journal_name}': {e}")
     return None
 
 
 def _fetch_openalex_by_source_id(journal_name, source_id, since, tag="flex:journal", keyword=None):
     """Paginate OpenAlex works for a given source ID and return normalized papers."""
     all_results, page = [], 1
+    rate_limited = False
     while True:
         params = {
             "filter":   f"primary_location.source.id:{source_id},from_publication_date:{since},type:article",
@@ -530,10 +527,16 @@ def _fetch_openalex_by_source_id(journal_name, source_id, since, tag="flex:journ
         try:
             r = requests.get("https://api.openalex.org/works", params=params, timeout=20)
         except requests.RequestException as e:
-            print(f"    {journal_name[:50]}: {e}")
+            print(f"    [openalex] network error: {e}")
             break
+        if r.status_code == 429:
+            if not rate_limited:
+                print("    [rate limit] pausing...")
+                rate_limited = True
+            time.sleep(30)
+            continue
+        rate_limited = False
         if r.status_code != 200:
-            print(f"    {journal_name[:50]}: HTTP {r.status_code}")
             break
         data    = r.json()
         results = data.get("results", [])
@@ -566,7 +569,6 @@ def _fetch_openalex_by_source_id(journal_name, source_id, since, tag="flex:journ
                 "url":             landing or pdf or p.get("id", ""),
                 "openAccessPdf":   {"url": pdf} if pdf else None,
             })
-        print(f"    {journal_name[:50]}: page {page}, {len(all_results)} so far")
         if len(results) < 100:
             break
         page += 1
@@ -584,7 +586,7 @@ def run_journals_flexible(journal_names, since, keywords=None):
     and results are deduplicated.  Without keywords, all recent articles are fetched.
     """
     collected = []
-    kw_list = keywords if keywords else [None]
+    kw_list   = keywords if keywords else [None]
     print("\n[flex:journals] OpenAlex sweep")
     for entry in journal_names:
         entry = entry.strip()
@@ -593,20 +595,24 @@ def run_journals_flexible(journal_names, since, keywords=None):
         if re.match(r'^S\d+$', entry):
             source_id = entry
             label     = entry
-            print(f"    {label}: using direct Source ID")
         else:
             label     = entry
             source_id = _openalex_source_id_by_name(entry)
             if not source_id:
                 print(f"    {entry[:50]}: not found in OpenAlex — skipping")
                 continue
-            print(f"    {entry[:50]}: resolved to {source_id}")
+
+        journal_papers = []
         for kw in kw_list:
-            if kw:
-                print(f"    {label[:40]} × keyword '{kw}'")
             papers = _fetch_openalex_by_source_id(label, source_id, since, tag="flex:journal", keyword=kw)
-            collected.extend(papers)
+            journal_papers.extend(papers)
             time.sleep(0.5)
+
+        journal_papers = deduplicate(journal_papers)
+        kw_note = f" across {len(kw_list)} keyword{'s' if len(kw_list) != 1 else ''}" if keywords else ""
+        print(f"    {label[:50]}: {len(journal_papers)} papers found{kw_note}")
+        collected.extend(journal_papers)
+
     deduped = deduplicate(collected)
     print(f"\n[flex:journals] {len(deduped)} papers after dedup")
     return deduped
