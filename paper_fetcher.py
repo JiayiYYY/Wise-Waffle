@@ -650,6 +650,7 @@ def score_papers(papers, research_focus, min_score=0, api_key="", batch_size=10)
 
     GROUP_CAP = 100
     TOTAL_CAP = 500
+    print(f"[scoring] TOTAL_CAP={TOTAL_CAP}, GROUP_CAP={GROUP_CAP}")
 
     def _tag_in(p, *fragments):
         tag = p.get("tag", "")
