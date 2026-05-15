@@ -541,10 +541,6 @@ def _fetch_openalex_by_source_id(journal_name, source_id, since, tag="flex:journ
         elif r.status_code != 200:
             break
 
-        if keyword and page == 1:
-            print(f"    [debug] URL: {r.url}")
-            print(f"    [debug] status={r.status_code} body={r.text[:400]}")
-
         data    = r.json()
         results = data.get("results", [])
         if not results:
