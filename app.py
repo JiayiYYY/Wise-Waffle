@@ -305,7 +305,8 @@ def build_config(s2_key, zotero_id, zotero_key, notion_tok, notion_db, collectio
 # ── Session state ─────────────────────────────────────────────────────────────
 for k, v in {"results": [], "saved_this": 0, "selected_keys": set(), "results_page": 1,
              "last_filtered_count": 0, "prefill": False, "log_lines": [],
-             "network_paper_key": None, "network_cache": {}, "view": "landing"}.items():
+             "network_paper_key": None, "network_cache": {}, "view": "landing",
+             "m2_all_scored": [], "m2_score_threshold": 6}.items():
     if k not in st.session_state:
         st.session_state[k] = v
 
@@ -1106,6 +1107,7 @@ def render_mode2():
             st.session_state["selected_keys"] = set()
             st.session_state["results_page"]  = 1
             st.session_state["log_lines"]     = []
+            st.session_state["m2_all_scored"] = []
 
             since = date_from.strftime("%Y-%m-%d")
             pf.S2_HEADERS = {"x-api-key": s2_key} if s2_key else {}
@@ -1160,10 +1162,12 @@ def render_mode2():
                             log_lines.append(f"\n── Scoring {len(all_papers)} papers with Claude ──"); update_log()
                             all_papers = pf.score_papers(all_papers, research_focus_input.strip(), api_key=anthropic_key)
                             log_lines.append(f"{len(all_papers)} papers after scoring"); update_log()
+                            st.session_state["m2_all_scored"] = list(all_papers)
+                            threshold_now = st.session_state.get("m2_score_threshold", 6)
                             before_filter = len(all_papers)
                             all_papers = [p for p in all_papers
-                                          if p.get("relevance_score") is None or p.get("relevance_score", 0) >= 6]
-                            log_lines.append(f"{len(all_papers)} papers kept (score ≥ 6, was {before_filter})"); update_log()
+                                          if p.get("relevance_score") is None or p.get("relevance_score", 0) >= threshold_now]
+                            log_lines.append(f"{len(all_papers)} papers kept (score ≥ {threshold_now}, was {before_filter})"); update_log()
                         else:
                             log_lines.append("[relevance] Anthropic API key not set — skipping scoring"); update_log()
 
@@ -1206,8 +1210,16 @@ def render_mode2():
                 f'font-size:0.75rem;padding:1rem;border-radius:4px;max-height:400px;overflow-y:auto;">'
                 f'<pre>{log_text}</pre></div>', unsafe_allow_html=True)
 
+    _m2_all_scored = st.session_state.get("m2_all_scored", [])
+    if _m2_all_scored:
+        _threshold = st.session_state.get("m2_score_threshold", 6)
+        _display_results = [p for p in _m2_all_scored
+                            if p.get("relevance_score") is None or p.get("relevance_score", 0) >= _threshold]
+    else:
+        _display_results = st.session_state.get("results", [])
+
     render_results(
-        st.session_state.get("results", []),
+        _display_results,
         s2_key=s2_key,
         zotero_id=zotero_id,
         zotero_key=zotero_key,
@@ -1216,6 +1228,25 @@ def render_mode2():
         collection_keys=flex_coll_keys,
         anthropic_key=anthropic_key,
     )
+
+    if _m2_all_scored:
+        st.divider()
+        thr_col, info_col = st.columns([1, 3])
+        with thr_col:
+            st.number_input(
+                "Minimum relevance score", min_value=0, max_value=10, step=1,
+                key="m2_score_threshold",
+                help="Re-filters scored papers instantly — no need to re-run the search.",
+            )
+        with info_col:
+            _thr = st.session_state.get("m2_score_threshold", 6)
+            _kept = sum(1 for p in _m2_all_scored
+                        if p.get("relevance_score") is None or p.get("relevance_score", 0) >= _thr)
+            st.markdown(
+                f'<div style="padding-top:1.75rem; color:#666; font-size:0.85rem">'
+                f'{_kept} of {len(_m2_all_scored)} papers shown at score ≥ {_thr}</div>',
+                unsafe_allow_html=True,
+            )
 
 # ── Router ────────────────────────────────────────────────────────────────────
 view = st.session_state.get("view", "landing")
