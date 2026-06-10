@@ -14,12 +14,13 @@ from pathlib import Path
 
 import requests
 
-BASE_DIR      = Path(__file__).parent
-CONFIG_PATH   = BASE_DIR / "config.json"
-TOPICS_PATH   = BASE_DIR / "topics.json"
-JOURNALS_PATH = BASE_DIR / "journals.json"
-CACHE_PATH    = BASE_DIR / "cache.json"
-SAVED_PATH    = BASE_DIR / "saved_dois.json"
+BASE_DIR             = Path(__file__).parent
+CONFIG_PATH          = BASE_DIR / "config.json"
+TOPICS_PATH          = BASE_DIR / "topics.json"
+JOURNALS_PATH        = BASE_DIR / "journals.json"
+JOURNALS_RANKED_PATH = BASE_DIR / "journals_ranked.json"
+CACHE_PATH           = BASE_DIR / "cache.json"
+SAVED_PATH           = BASE_DIR / "saved_dois.json"
 
 S2_HEADERS: dict = {}
 S2_BASE          = "https://api.semanticscholar.org/graph/v1"
@@ -28,6 +29,42 @@ S2_AUTHOR_SEARCH = f"{S2_BASE}/author/search"
 PAPER_FIELDS     = "title,authors,year,abstract,externalIds,venue,publicationDate,url,openAccessPdf,publicationTypes,citationCount"
 
 OA_HEADERS = {"User-Agent": "mailto:jiayi.yan0124@gmail.com"}
+
+# ── Ranked journal list ───────────────────────────────────────────────────────
+
+def _load_journal_tiers():
+    """Return (name_to_tier dict, openalex_id_set) from journals_ranked.json.
+    Returns empty structures if the file is absent — safe for first run.
+    """
+    if not JOURNALS_RANKED_PATH.exists():
+        return {}, set()
+    with open(JOURNALS_RANKED_PATH, "r", encoding="utf-8") as f:
+        entries = json.load(f)
+    name_to_tier = {e["name"].strip().lower(): e["tier"] for e in entries}
+    oa_id_set    = {e["openalex_id"] for e in entries if e.get("openalex_id")}
+    return name_to_tier, oa_id_set
+
+_JOURNAL_TIER_MAP, _JOURNAL_OA_IDS = _load_journal_tiers()
+
+
+def _journal_tier(venue):
+    """Return tier (1 or 2) for a venue string, or 0 if not in the ranked list.
+
+    Match order: exact → ranked-name substring of venue → venue substring of ranked-name.
+    Minimum 15 chars for substring checks to avoid false positives on short tokens.
+    """
+    if not venue:
+        return 0
+    v = venue.strip().lower()
+    if v in _JOURNAL_TIER_MAP:
+        return _JOURNAL_TIER_MAP[v]
+    for name, tier in _JOURNAL_TIER_MAP.items():
+        if len(name) >= 15 and name in v:
+            return tier
+    for name, tier in _JOURNAL_TIER_MAP.items():
+        if len(v) >= 15 and v in name:
+            return tier
+    return 0
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
@@ -698,10 +735,11 @@ def deep_search_openalex(journal_names, keywords=None, lookback_years=10):
 
 
 def compute_impact_score(papers):
-    """Set impact_score (0.0–1.0) on each paper based on citations and recency.
+    """Set impact_score (0.0–1.0) on each paper.
 
-    citation_count weight: 0.72 (log-normalised over batch)
-    recency weight:        0.28 (linear decay over 20 years)
+    citation_count weight: 0.60 (log-normalised over batch)
+    recency weight:        0.25 (linear decay over 20 years)
+    journal_bonus weight:  0.15 (tier 1 → 1.0, tier 2 → 0.6, unranked → 0.0)
 
     Modifies papers in-place and returns the same list.
     """
@@ -718,7 +756,9 @@ def compute_impact_score(papers):
         except (ValueError, TypeError):
             year = 0
         recency = max(0.0, 1.0 - (current_year - year) / 20.0) if year else 0.0
-        p["impact_score"] = round(0.72 * citation_norm + 0.28 * recency, 3)
+        tier = _journal_tier(p.get("journal", ""))
+        journal_bonus = 1.0 if tier == 1 else (0.6 if tier == 2 else 0.0)
+        p["impact_score"] = round(0.60 * citation_norm + 0.25 * recency + 0.15 * journal_bonus, 3)
     return papers
 
 

@@ -205,8 +205,6 @@ def _capture_m2_config(date_from, date_to):
         "keywords":         st.session_state.get("m2_keywords", ""),
         "crossover":        st.session_state.get("m2_crossover", ""),
         "scholars":         st.session_state.get("m2_scholars", ""),
-        "journals":         st.session_state.get("m2_journals", ""),
-        "journal_keywords": st.session_state.get("m2_journal_keywords", ""),
         "research_focus":   st.session_state.get("m2_research_focus", ""),
         "search_mode":      st.session_state.get("m2_search_mode", "recent"),
         "impact_threshold": st.session_state.get("m2_impact_threshold", 0.3),
@@ -218,8 +216,6 @@ def _restore_m2_config(cfg):
         ("m2_keywords",         "keywords"),
         ("m2_crossover",        "crossover"),
         ("m2_scholars",         "scholars"),
-        ("m2_journals",         "journals"),
-        ("m2_journal_keywords", "journal_keywords"),
         ("m2_research_focus",   "research_focus"),
         ("m2_search_mode",      "search_mode"),
         ("m2_impact_threshold", "impact_threshold"),
@@ -1346,7 +1342,6 @@ def render_mode2():
         "flex:keyword":   zotero_coll,
         "flex:crossover": zotero_coll,
         "flex:scholar":   zotero_coll,
-        "flex:journal":   zotero_coll,
     } if zotero_coll else {}
 
     # ── Header ──
@@ -1429,19 +1424,8 @@ def render_mode2():
                 key="m2_scholar_lookback",
             )
 
-        st.markdown("**Journals** — sweeps articles via OpenAlex")
-        if _active_mode == "recent":
-            st.caption("Enter exact journal names or OpenAlex Source IDs (format: S12345678). IDs avoid name-matching errors — find them at openalex.org. One per line.")
-        else:
-            st.caption("Deep search uses a 10-year lookback per journal. Enter names or OpenAlex Source IDs. One per line.")
-        journals_raw = st.text_area("Journals", height=90, key="m2_journals",
-            placeholder="Journal of Communication\nNew Media & Society\nComputers in Human Behavior",
-            label_visibility="collapsed")
-        st.markdown("**Journal search terms** *(optional, 3–5 terms recommended)*")
-        st.caption("Filters results within the journals above. Leave blank to fetch all articles (slower).")
-        journal_keywords_raw = st.text_area("Journal search terms (optional, 3-5 terms recommended)", height=80, key="m2_journal_keywords",
-            placeholder="social media\nalgorithmic curation\nmisinformation",
-            label_visibility="collapsed")
+        st.markdown("**Journals**")
+        st.caption("Journal quality is automatically factored into the impact score using a built-in ranked journal list.")
 
     st.markdown("### Research Focus *(optional)*")
     st.caption("Claude scores each paper 0–10 for relevance. Requires an Anthropic key in the sidebar.")
@@ -1470,13 +1454,13 @@ def render_mode2():
             st.warning("Scoring is enabled for a large date range. This may take a long time and incur API costs. Consider reducing the date range or disabling scoring.")
 
     if run_btn:
-        keywords         = [l.strip() for l in keywords_raw.splitlines()         if l.strip()]
-        crossovers       = [l.strip() for l in crossover_raw.splitlines()       if l.strip()]
-        scholars         = [l.strip() for l in scholars_raw.splitlines()        if l.strip()]
-        journals         = [l.strip() for l in journals_raw.splitlines()        if l.strip()]
-        journal_keywords = [l.strip() for l in journal_keywords_raw.splitlines() if l.strip()]
+        keywords         = [l.strip() for l in keywords_raw.splitlines()   if l.strip()]
+        crossovers       = [l.strip() for l in crossover_raw.splitlines() if l.strip()]
+        scholars         = [l.strip() for l in scholars_raw.splitlines()  if l.strip()]
+        journals         = []
+        journal_keywords = []
 
-        if not any([keywords, crossovers, scholars, journals]):
+        if not any([keywords, crossovers, scholars]):
             st.warning("Enter at least one keyword, scholar, or journal to search.")
         else:
             st.session_state["results"]       = []

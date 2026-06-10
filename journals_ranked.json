@@ -1,0 +1,272 @@
+[
+  {
+    "name": "Journal of Communication",
+    "openalex_id": "S107737141",
+    "tier": 1
+  },
+  {
+    "name": "Communication Research",
+    "openalex_id": "S28604305",
+    "tier": 1
+  },
+  {
+    "name": "Human Communication Research",
+    "openalex_id": "S195553305",
+    "tier": 1
+  },
+  {
+    "name": "Communication Theory",
+    "openalex_id": "S103253184",
+    "tier": 1
+  },
+  {
+    "name": "Journal of Computer-Mediated Communication",
+    "openalex_id": "S30594836",
+    "tier": 1
+  },
+  {
+    "name": "New Media & Society",
+    "openalex_id": "S88603889",
+    "tier": 1
+  },
+  {
+    "name": "Social Media + Society",
+    "openalex_id": "S2764570952",
+    "tier": 1
+  },
+  {
+    "name": "Information Communication & Society",
+    "openalex_id": "S70010600",
+    "tier": 1
+  },
+  {
+    "name": "Mass Communication and Society",
+    "openalex_id": "S153570774",
+    "tier": 1
+  },
+  {
+    "name": "Journalism & Mass Communication Quarterly",
+    "openalex_id": "S20010350",
+    "tier": 1
+  },
+  {
+    "name": "Political Communication",
+    "openalex_id": "S27211427",
+    "tier": 1
+  },
+  {
+    "name": "Media Psychology",
+    "openalex_id": "S97866008",
+    "tier": 1
+  },
+  {
+    "name": "Journal of Broadcasting & Electronic Media",
+    "openalex_id": "S143982487",
+    "tier": 1
+  },
+  {
+    "name": "Computers in Human Behavior",
+    "openalex_id": "S204030396",
+    "tier": 1
+  },
+  {
+    "name": "Journalism Practice",
+    "openalex_id": "S194402510",
+    "tier": 2
+  },
+  {
+    "name": "Digital Journalism",
+    "openalex_id": "S2764497610",
+    "tier": 2
+  },
+  {
+    "name": "Journalism Studies",
+    "openalex_id": "S119437531",
+    "tier": 2
+  },
+  {
+    "name": "Communication Monographs",
+    "openalex_id": "S173776643",
+    "tier": 2
+  },
+  {
+    "name": "Health Communication",
+    "openalex_id": "S108453729",
+    "tier": 2
+  },
+  {
+    "name": "Journal of Health Communication",
+    "openalex_id": "S27931387",
+    "tier": 2
+  },
+  {
+    "name": "Science Communication",
+    "openalex_id": "S30803906",
+    "tier": 2
+  },
+  {
+    "name": "Public Opinion Quarterly",
+    "openalex_id": "S135539873",
+    "tier": 2
+  },
+  {
+    "name": "International Journal of Press/Politics",
+    "openalex_id": "S161861253",
+    "tier": 2
+  },
+  {
+    "name": "Media Culture & Society",
+    "openalex_id": "S18522216",
+    "tier": 2
+  },
+  {
+    "name": "Television & New Media",
+    "openalex_id": "S35909690",
+    "tier": 2
+  },
+  {
+    "name": "Convergence",
+    "openalex_id": "S2738500204",
+    "tier": 2
+  },
+  {
+    "name": "Journal of Children and Media",
+    "openalex_id": "S199141608",
+    "tier": 2
+  },
+  {
+    "name": "Sex Roles",
+    "openalex_id": "S73388012",
+    "tier": 2
+  },
+  {
+    "name": "Gender & Society",
+    "openalex_id": "S113116626",
+    "tier": 2
+  },
+  {
+    "name": "Feminist Media Studies",
+    "openalex_id": "S26978096",
+    "tier": 2
+  },
+  {
+    "name": "Psychology of Popular Media",
+    "openalex_id": "S2765010835",
+    "tier": 2
+  },
+  {
+    "name": "Cyberpsychology Behavior and Social Networking",
+    "openalex_id": "S118036144",
+    "tier": 2
+  },
+  {
+    "name": "Journal of Adolescence",
+    "openalex_id": "S179289126",
+    "tier": 2
+  },
+  {
+    "name": "Journal of Youth and Adolescence",
+    "openalex_id": "S126644992",
+    "tier": 2
+  },
+  {
+    "name": "Developmental Psychology",
+    "openalex_id": "S126635229",
+    "tier": 2
+  },
+  {
+    "name": "Nature Human Behaviour",
+    "openalex_id": "S2764866340",
+    "tier": 2
+  },
+  {
+    "name": "Perspectives on Psychological Science",
+    "openalex_id": "S27228949",
+    "tier": 2
+  },
+  {
+    "name": "Psychological Science",
+    "openalex_id": "S58854535",
+    "tier": 2
+  },
+  {
+    "name": "Big Data & Society",
+    "openalex_id": "S2736409588",
+    "tier": 2
+  },
+  {
+    "name": "AI & Society",
+    "openalex_id": "S4210190517",
+    "tier": 2
+  },
+  {
+    "name": "AI & Ethics",
+    "openalex_id": "S4210170699",
+    "tier": 2
+  },
+  {
+    "name": "Philosophy & Technology",
+    "openalex_id": "S23735784",
+    "tier": 2
+  },
+  {
+    "name": "Social Studies of Science",
+    "openalex_id": "S68632876",
+    "tier": 2
+  },
+  {
+    "name": "Science Technology and Human Values",
+    "openalex_id": "S2181421",
+    "tier": 2
+  },
+  {
+    "name": "Information Communication and Society",
+    "openalex_id": "S70010600",
+    "tier": 2
+  },
+  {
+    "name": "Computational Communication Research",
+    "openalex_id": "S4210235366",
+    "tier": 2
+  },
+  {
+    "name": "Global Media and Communication",
+    "openalex_id": "S121442443",
+    "tier": 2
+  },
+  {
+    "name": "International Communication Gazette",
+    "openalex_id": "S39920973",
+    "tier": 2
+  },
+  {
+    "name": "Journal of Information Technology & Politics",
+    "openalex_id": "S104369171",
+    "tier": 2
+  },
+  {
+    "name": "Women's Studies in Communication",
+    "openalex_id": "",
+    "tier": 2
+  },
+  {
+    "name": "Psychology of Women Quarterly",
+    "openalex_id": "S30211177",
+    "tier": 2
+  },
+  {
+    "name": "Journal of Media Psychology",
+    "openalex_id": "S167406155",
+    "tier": 2
+  },
+  {
+    "name": "Technology Mind and Behavior",
+    "openalex_id": "S4210236455",
+    "tier": 2
+  },
+  {
+    "name": "Public Understanding of Science",
+    "openalex_id": "S124907306",
+    "tier": 2
+  }
+]
