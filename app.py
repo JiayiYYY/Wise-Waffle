@@ -158,7 +158,7 @@ def save_searches(data):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 _SNAP_PAPER_FIELDS = ("title", "doi", "year", "pub_date", "journal", "authors",
-                      "tag", "relevance_score", "relevance_reason", "url")
+                      "tag", "search_term", "relevance_score", "relevance_reason", "url")
 
 def _trim_papers(papers):
     return [{k: p.get(k) for k in _SNAP_PAPER_FIELDS} for p in papers]
@@ -515,52 +515,28 @@ def render_results(results, s2_key="", zotero_id="", zotero_key="",
 
     st.markdown("---")
 
-    fc1, fc2, fc3 = st.columns([1.2, 1.5, 2])
+    all_keywords = sorted(set(p.get("search_term", "") for p in results if p.get("search_term")))
+    all_journals = sorted(set(p["journal"] for p in results if p.get("journal")))
 
-    if is_flex:
-        all_flex_tags = sorted(set(p.get("tag", "") for p in results))
-        flex_label    = {"flex:keyword": "Keywords", "flex:crossover": "Crossover",
-                         "flex:scholar": "Scholars", "flex:journal": "Journals"}
-        with fc1:
-            source_filter = st.multiselect("Filter by source", all_flex_tags, default=all_flex_tags,
-                format_func=lambda x: flex_label.get(x, x))
-        with fc2:
-            all_journals   = sorted(set(p["journal"] for p in results if p.get("journal")))
-            journal_filter = st.multiselect("Filter by journal", all_journals, default=[],
-                placeholder="All journals…")
-        with fc3:
-            search_filter = st.text_input("Search", placeholder="Filter by title, author, journal…")
-        sc1, _ = st.columns([1, 4])
-        with sc1:
-            sort_by = st.selectbox("Sort by", ["date_desc", "date_asc", "journal", "score_desc"],
-                format_func=lambda x: {"date_desc": "Newest first", "date_asc": "Oldest first",
-                                        "journal": "Journal A–Z", "score_desc": "Score (high → low)"}[x])
-        filtered = [p for p in results if p.get("tag", "") in source_filter]
-    else:
-        all_topic_keys = sorted(set(get_topic_key(p["tag"]) for p in results))
-        topic_options  = {tk: TOPIC_LABELS.get(tk, tk) for tk in all_topic_keys}
-        with fc1:
-            tier_filter = st.multiselect("Filter by tier", ["tier1", "tier2", "tier3", "tier5"],
-                default=["tier1", "tier2", "tier3", "tier5"],
-                format_func=lambda x: {"tier1": "Core", "tier2": "Crossover",
-                                        "tier3": "Scholars", "tier5": "Journals"}[x])
-        with fc2:
-            topic_filter = st.multiselect("Filter by topic", list(topic_options.keys()),
-                default=list(topic_options.keys()),
-                format_func=lambda x: topic_options[x])
-        with fc3:
-            search_filter = st.text_input("Search", placeholder="Filter by title, author, journal…")
-        all_journals   = sorted(set(p["journal"] for p in results if p.get("journal")))
+    fc1, fc2, fc3 = st.columns([1.2, 1.5, 2])
+    with fc1:
+        kw_filter = st.multiselect("Filter by keyword", all_keywords, default=all_keywords,
+                                   placeholder="All keywords…")
+    with fc2:
         journal_filter = st.multiselect("Filter by journal", all_journals, default=[],
-                                        placeholder="All journals (select to narrow down…)")
-        sc1, sc2 = st.columns([1, 4])
-        with sc1:
-            sort_by = st.selectbox("Sort by", ["date_desc", "date_asc", "journal", "score_desc"],
-                format_func=lambda x: {"date_desc": "Newest first", "date_asc": "Oldest first",
-                                        "journal": "Journal A–Z", "score_desc": "Score (high → low)"}[x])
-        filtered = [p for p in results
-                    if pf._get_tier(p["tag"]) in tier_filter
-                    and get_topic_key(p["tag"]) in topic_filter]
+                                        placeholder="All journals…")
+    with fc3:
+        search_filter = st.text_input("Search", placeholder="Filter by title, author, journal…")
+    sc1, _ = st.columns([1, 4])
+    with sc1:
+        sort_by = st.selectbox("Sort by", ["date_desc", "date_asc", "journal", "score_desc"],
+            format_func=lambda x: {"date_desc": "Newest first", "date_asc": "Oldest first",
+                                    "journal": "Journal A–Z", "score_desc": "Score (high → low)"}[x])
+
+    filtered = [p for p in results
+                if not kw_filter
+                or not p.get("search_term")
+                or p.get("search_term") in kw_filter]
 
     if journal_filter:
         filtered = [p for p in filtered if p.get("journal") in journal_filter]

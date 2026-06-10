@@ -142,7 +142,7 @@ def _log_step(n, label, count=None, detail=""):
 
 # ── Normalize ─────────────────────────────────────────────────────────────────
 
-def normalize(paper, tag=""):
+def normalize(paper, tag="", search_term=""):
     """Normalize a paper dict from S2 or OpenAlex into a standard format."""
     raw_authors = paper.get("authors", [])
     if raw_authors and isinstance(raw_authors[0], dict):
@@ -187,8 +187,9 @@ def normalize(paper, tag=""):
         "abstract": abstract,
         "journal":  paper.get("venue") or paper.get("journal", "") or "",
         "doi":      doi,
-        "url":      paper.get("url", "") or pdf_url,
-        "tag":      tag,
+        "url":         paper.get("url", "") or pdf_url,
+        "tag":         tag,
+        "search_term": search_term,
     }
 
 def deduplicate(papers):
@@ -279,7 +280,7 @@ def run_search(topics, since):
         print(f"  {group}")
         for kw in keywords:
             papers = search_bulk(kw, since=since, max_results=10)
-            collected.extend(normalize(p, tag=f"tier1:{group}") for p in papers)
+            collected.extend(normalize(p, tag=f"tier1:{group}", search_term=kw) for p in papers)
             time.sleep(1.2)
 
     print("\n[Tier 2] Interdisciplinary crossover")
@@ -289,7 +290,7 @@ def run_search(topics, since):
         print(f"  {group}")
         for kw in keywords:
             papers = search_bulk(kw, since=since, max_results=5)
-            collected.extend(normalize(p, tag=f"tier2:{group}") for p in papers)
+            collected.extend(normalize(p, tag=f"tier2:{group}", search_term=kw) for p in papers)
             time.sleep(1.2)
 
     deduped = deduplicate(collected)
@@ -316,13 +317,15 @@ def run_authors(topics, since):
     id_to_name = {v: k for k, v in name_to_id.items()}
     collected, journal_log = [], []
     for p in raw_papers:
-        author_tag = "ascor"
+        author_tag  = "ascor"
+        author_name = ""
         for a in p.get("authors", []):
             aid = a.get("authorId", "")
             if aid in id_to_name:
-                author_tag = f"ascor:{id_to_name[aid]}"
+                author_tag  = f"ascor:{id_to_name[aid]}"
+                author_name = id_to_name[aid]
                 break
-        norm = normalize(p, tag=author_tag)
+        norm = normalize(p, tag=author_tag, search_term=author_name)
         collected.append(norm)
         if norm["journal"]:
             journal_log.append(norm["journal"])
@@ -433,7 +436,7 @@ def run_journals(since):
                 time.sleep(0.8)
 
             print(f"    {journal[:50]}: {len(all_results)} total")
-            collected.extend(normalize(p, tag=f"tier5:{group}") for p in all_results)
+            collected.extend(normalize(p, tag=f"tier5:{group}", search_term=journal) for p in all_results)
             time.sleep(0.5)
 
     deduped = deduplicate(collected)
@@ -451,7 +454,7 @@ def run_keywords_flexible(keywords, since, max_per_keyword=20):
             continue
         print(f"  keyword: {kw}")
         papers = search_bulk(kw, since=since, max_results=max_per_keyword)
-        collected.extend(normalize(p, tag="flex:keyword") for p in papers)
+        collected.extend(normalize(p, tag="flex:keyword", search_term=kw) for p in papers)
         time.sleep(1.2)
     deduped = deduplicate(collected)
     print(f"\n[flex:keywords] {len(deduped)} papers after dedup")
@@ -476,18 +479,23 @@ def run_authors_flexible(author_names, since, papers_per_author=15):
         else:
             names_to_resolve.append(entry)
 
-    resolved_ids = list(direct_ids)
+    resolved_ids   = list(direct_ids)
+    id_to_name_flex = {d: d for d in direct_ids}
     if names_to_resolve:
         print(f"\n[flex:scholars] Resolving {len(names_to_resolve)} scholar name(s)…")
         name_to_id = resolve_author_ids(names_to_resolve)
         resolved_ids.extend(name_to_id.values())
+        id_to_name_flex.update({aid: name for name, aid in name_to_id.items()})
 
     if not resolved_ids:
         return []
     print(f"\n[flex:scholars] Fetching papers for {len(resolved_ids)} scholar(s)…")
-    raw = get_papers_for_authors(resolved_ids, since=since,
-                                  papers_per_author=papers_per_author)
-    deduped = deduplicate([normalize(p, tag="flex:scholar") for p in raw])
+    collected_flex = []
+    for author_id in resolved_ids:
+        scholar_label = id_to_name_flex.get(author_id, author_id)
+        raw = get_papers_for_authors([author_id], since=since, papers_per_author=papers_per_author)
+        collected_flex.extend(normalize(p, tag="flex:scholar", search_term=scholar_label) for p in raw)
+    deduped = deduplicate(collected_flex)
     print(f"\n[flex:scholars] {len(deduped)} papers after dedup")
     return deduped
 
@@ -512,7 +520,7 @@ def _openalex_source_id_by_name(journal_name):
     return None
 
 
-def _fetch_openalex_by_source_id(journal_name, source_id, since, tag="flex:journal", keyword=None):
+def _fetch_openalex_by_source_id(journal_name, source_id, since, tag="flex:journal", keyword=None, search_term=""):
     """Paginate OpenAlex works for a given source ID and return normalized papers."""
     all_results, page = [], 1
     while True:
@@ -579,7 +587,7 @@ def _fetch_openalex_by_source_id(journal_name, source_id, since, tag="flex:journ
         if len(results) < 100:
             break
         page += 1
-    return [normalize(p, tag=tag) for p in all_results]
+    return [normalize(p, tag=tag, search_term=search_term) for p in all_results]
 
 
 def run_journals_flexible(journal_names, since, keywords=None):
@@ -612,7 +620,8 @@ def run_journals_flexible(journal_names, since, keywords=None):
         journal_papers = []
         for i, kw in enumerate(kw_list):
             papers = _fetch_openalex_by_source_id(label, source_id, since,
-                                                   tag="flex:journal", keyword=kw)
+                                                   tag="flex:journal", keyword=kw,
+                                                   search_term=label)
             journal_papers.extend(papers)
             if i < len(kw_list) - 1:
                 time.sleep(0.5)
