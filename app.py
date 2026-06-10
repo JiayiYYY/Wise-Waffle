@@ -373,13 +373,13 @@ COLLECTION_KEY_LABELS = {
     "tier5:interdisciplinary_high_impact":   "Journal — Interdisciplinary",
 }
 
-def build_config(s2_key, zotero_id, zotero_key, notion_tok, notion_db, collection_keys=None, anthropic_key=""):
+def build_config(s2_key, zotero_id, zotero_key, notion_tok, notion_db, collection_keys=None, anthropic_key="", library_type="user"):
     cfg = load_json_safe(CONFIG_PATH) or {}
     if s2_key: cfg["semantic_scholar"] = {"api_key": s2_key}
     if anthropic_key: cfg["anthropic"] = {"api_key": anthropic_key}
     if zotero_id and zotero_key:
         z = cfg.get("zotero", {})
-        z.update({"library_id": zotero_id, "api_key": zotero_key, "library_type": "user"})
+        z.update({"library_id": zotero_id, "api_key": zotero_key, "library_type": library_type})
         if collection_keys:
             z["collection_keys"] = {k: v for k, v in collection_keys.items() if v.strip()}
         cfg["zotero"] = z
@@ -489,7 +489,7 @@ def render_landing():
 
 # ── Shared results renderer ───────────────────────────────────────────────────
 def render_results(results, s2_key="", zotero_id="", zotero_key="",
-                   notion_tok="", notion_db="", collection_keys=None, anthropic_key=""):
+                   notion_tok="", notion_db="", collection_keys=None, anthropic_key="", library_type="user"):
     if not results:
         return
 
@@ -692,7 +692,7 @@ def render_results(results, s2_key="", zotero_id="", zotero_key="",
 
     if selected_papers:
         st.markdown(f"### Save {len(selected_papers)} selected paper{'s' if len(selected_papers) > 1 else ''}")
-        config_now = build_config(s2_key, zotero_id, zotero_key, notion_tok, notion_db, collection_keys, anthropic_key)
+        config_now = build_config(s2_key, zotero_id, zotero_key, notion_tok, notion_db, collection_keys, anthropic_key, library_type)
         sv1, sv2, sv3 = st.columns([1, 1, 4])
         with sv1:
             if st.button("💾 Save to Zotero", disabled=not (zotero_id and zotero_key)):
@@ -751,7 +751,11 @@ def render_mode1():
                     st.session_state[f"coll_{k}"] = host_colls.get(k, "")
 
         st.text_input("Semantic Scholar API Key", type="password", key="s2_key_input",     placeholder="Enter key…")
-        st.text_input("Zotero Library ID",                         key="zotero_id_input",  placeholder="e.g. 10541129")
+        _zid_col, _ztype_col = st.columns([2, 1])
+        with _zid_col:
+            st.text_input("Zotero Library ID", key="zotero_id_input", placeholder="e.g. 10541129")
+        with _ztype_col:
+            st.selectbox("Library type", ["user", "group"], key="zotero_lib_type")
         st.text_input("Zotero API Key",           type="password", key="zotero_key_input")
         st.text_input("Notion Token",             type="password", key="notion_tok_input", placeholder="secret_…")
         st.text_input("Notion Database ID",                        key="notion_db_input",  placeholder="32-char ID")
@@ -763,6 +767,7 @@ def render_mode1():
         notion_tok    = st.session_state.get("notion_tok_input", "")
         notion_db     = st.session_state.get("notion_db_input", "")
         anthropic_key = st.session_state.get("anthropic_key_input", "")
+        zotero_lib_type = st.session_state.get("zotero_lib_type", "user")
 
         with st.expander("📁 Zotero Collection Keys (optional)"):
             st.markdown('<p style="font-size:0.75rem;color:#aaa;margin-bottom:0.5rem">8-char key from each collection URL. Leave blank to save to root library.</p>', unsafe_allow_html=True)
@@ -947,7 +952,7 @@ Get a free API key at [semanticscholar.org/product/api](https://www.semanticscho
         st.session_state["results_page"]  = 1
         st.session_state["log_lines"]     = []
 
-        config = build_config(s2_key, zotero_id, zotero_key, notion_tok, notion_db, collection_keys, anthropic_key)
+        config = build_config(s2_key, zotero_id, zotero_key, notion_tok, notion_db, collection_keys, anthropic_key, zotero_lib_type)
         topics = load_json_safe(TOPICS_PATH) or {}
         since  = date_from.strftime("%Y-%m-%d")
         pf.S2_HEADERS = {"x-api-key": s2_key} if s2_key else {}
@@ -1067,6 +1072,7 @@ Get a free API key at [semanticscholar.org/product/api](https://www.semanticscho
         notion_db=notion_db,
         collection_keys=collection_keys,
         anthropic_key=anthropic_key,
+        library_type=zotero_lib_type,
     )
 
     if st.session_state.get("results"):
@@ -1137,7 +1143,11 @@ def render_mode2():
                 st.session_state["m2_anthropic_key"] = host_secrets_m2.get("anthropic_key", "")
 
         st.text_input("Semantic Scholar API Key *", type="password", key="m2_s2_key",       placeholder="Required")
-        st.text_input("Zotero Library ID",                           key="m2_zotero_id",    placeholder="e.g. 10541129")
+        _m2_zid_col, _m2_ztype_col = st.columns([2, 1])
+        with _m2_zid_col:
+            st.text_input("Zotero Library ID", key="m2_zotero_id", placeholder="e.g. 10541129")
+        with _m2_ztype_col:
+            st.selectbox("Library type", ["user", "group"], key="m2_zotero_lib_type")
         st.text_input("Zotero API Key",              type="password", key="m2_zotero_key")
         st.text_input("Notion Token",                type="password", key="m2_notion_tok",  placeholder="secret_…")
         st.text_input("Notion Database ID",                           key="m2_notion_db",   placeholder="32-char ID")
@@ -1151,6 +1161,7 @@ def render_mode2():
         notion_tok    = st.session_state.get("m2_notion_tok", "")
         notion_db     = st.session_state.get("m2_notion_db", "")
         anthropic_key = st.session_state.get("m2_anthropic_key", "")
+        zotero_lib_type = st.session_state.get("m2_zotero_lib_type", "user")
         zotero_coll   = st.session_state.get("m2_zotero_coll", "")
 
         st.divider()
@@ -1406,7 +1417,7 @@ def render_mode2():
 
                     if all_papers and not dry_run and target != "view":
                         config = build_config(s2_key, zotero_id, zotero_key, notion_tok, notion_db,
-                                              flex_coll_keys, anthropic_key)
+                                              flex_coll_keys, anthropic_key, zotero_lib_type)
                         if target in ("zotero", "both") and config.get("zotero"):
                             log_lines.append("\n── Saving to Zotero ──"); update_log()
                             pf.save_to_zotero(all_papers, config)
@@ -1451,6 +1462,7 @@ def render_mode2():
         notion_db=notion_db,
         collection_keys=flex_coll_keys,
         anthropic_key=anthropic_key,
+        library_type=zotero_lib_type,
     )
 
     if _m2_all_scored:
