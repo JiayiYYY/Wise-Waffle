@@ -487,6 +487,10 @@ def render_landing():
             st.session_state["log_lines"] = []
             st.rerun()
 
+def _reset_results_page():
+    st.session_state["results_page"] = 1
+    st.query_params["page"] = "1"
+
 # ── Shared results renderer ───────────────────────────────────────────────────
 def render_results(results, s2_key="", zotero_id="", zotero_key="",
                    notion_tok="", notion_db="", collection_keys=None, anthropic_key="", library_type="user"):
@@ -521,17 +525,21 @@ def render_results(results, s2_key="", zotero_id="", zotero_key="",
     fc1, fc2, fc3 = st.columns([1.2, 1.5, 2])
     with fc1:
         kw_filter = st.multiselect("Filter by keyword", all_keywords, default=all_keywords,
-                                   placeholder="All keywords…")
+                                   placeholder="All keywords…",
+                                   key="rr_kw_filter", on_change=_reset_results_page)
     with fc2:
         journal_filter = st.multiselect("Filter by journal", all_journals, default=[],
-                                        placeholder="All journals…")
+                                        placeholder="All journals…",
+                                        key="rr_journal_filter", on_change=_reset_results_page)
     with fc3:
-        search_filter = st.text_input("Search", placeholder="Filter by title, author, journal…")
+        search_filter = st.text_input("Search", placeholder="Filter by title, author, journal…",
+                                      key="rr_search_filter", on_change=_reset_results_page)
     sc1, _ = st.columns([1, 4])
     with sc1:
         sort_by = st.selectbox("Sort by", ["date_desc", "date_asc", "journal", "score_desc"],
             format_func=lambda x: {"date_desc": "Newest first", "date_asc": "Oldest first",
-                                    "journal": "Journal A–Z", "score_desc": "Score (high → low)"}[x])
+                                    "journal": "Journal A–Z", "score_desc": "Score (high → low)"}[x],
+            key="rr_sort_by", on_change=_reset_results_page)
 
     filtered = [p for p in results
                 if not kw_filter
@@ -599,10 +607,22 @@ def render_results(results, s2_key="", zotero_id="", zotero_key="",
 
     PAGE_SIZE   = 20
     total_pages = max(1, (len(filtered) + PAGE_SIZE - 1) // PAGE_SIZE)
-    if st.session_state.get("last_filtered_count") != len(filtered):
-        st.session_state["results_page"]       = 1
-        st.session_state["last_filtered_count"] = len(filtered)
-    page        = st.session_state["results_page"]
+
+    # Sync page from URL query params so browser back/forward works
+    _qp = st.query_params.get("page", "")
+    if _qp:
+        try:
+            _want = max(1, min(int(_qp), total_pages))
+        except (ValueError, TypeError):
+            _want = 1
+        _cur = st.session_state.get("results_page", 1)
+        if _cur != _want:
+            st.session_state["results_page"] = _want
+            if str(_want) != _qp:
+                st.query_params["page"] = str(_want)
+            st.rerun()
+
+    page        = max(1, min(st.session_state.get("results_page", 1), total_pages))
     start       = (page - 1) * PAGE_SIZE
     page_papers = filtered[start:start + PAGE_SIZE]
 
@@ -648,20 +668,28 @@ def render_results(results, s2_key="", zotero_id="", zotero_key="",
         pc1, pc2, pc3, pc4, pc5 = st.columns([1, 1, 2, 1, 1])
         with pc1:
             if st.button("⟪ First") and page > 1:
-                st.session_state["results_page"] = 1; st.rerun()
+                st.session_state["results_page"] = 1
+                st.query_params["page"] = "1"
+                st.rerun()
         with pc2:
             if st.button("← Prev") and page > 1:
-                st.session_state["results_page"] = page - 1; st.rerun()
+                st.session_state["results_page"] = page - 1
+                st.query_params["page"] = str(page - 1)
+                st.rerun()
         with pc3:
             st.markdown(f'<div style="text-align:center;font-family:DM Mono,monospace;font-size:0.8rem;'
                         f'color:#9a9490;padding-top:0.5rem">Page {page} of {total_pages}</div>',
                         unsafe_allow_html=True)
         with pc4:
             if st.button("Next →") and page < total_pages:
-                st.session_state["results_page"] = page + 1; st.rerun()
+                st.session_state["results_page"] = page + 1
+                st.query_params["page"] = str(page + 1)
+                st.rerun()
         with pc5:
             if st.button("Last ⟫") and page < total_pages:
-                st.session_state["results_page"] = total_pages; st.rerun()
+                st.session_state["results_page"] = total_pages
+                st.query_params["page"] = str(total_pages)
+                st.rerun()
 
     st.markdown("---")
     selected_papers = [p for p in filtered if paper_key(p) in st.session_state["selected_keys"]]
@@ -927,6 +955,9 @@ Get a free API key at [semanticscholar.org/product/api](https://www.semanticscho
         st.session_state["selected_keys"] = set()
         st.session_state["results_page"]  = 1
         st.session_state["log_lines"]     = []
+        for _k in ("rr_kw_filter", "rr_journal_filter", "rr_search_filter", "rr_sort_by"):
+            st.session_state.pop(_k, None)
+        st.query_params["page"] = "1"
 
         config = build_config(s2_key, zotero_id, zotero_key, notion_tok, notion_db, collection_keys, anthropic_key, zotero_lib_type)
         topics = load_json_safe(TOPICS_PATH) or {}
@@ -1320,6 +1351,9 @@ def render_mode2():
             st.session_state["results_page"]  = 1
             st.session_state["log_lines"]     = []
             st.session_state["m2_all_scored"] = []
+            for _k in ("rr_kw_filter", "rr_journal_filter", "rr_search_filter", "rr_sort_by"):
+                st.session_state.pop(_k, None)
+            st.query_params["page"] = "1"
 
             since = date_from.strftime("%Y-%m-%d")
             pf.S2_HEADERS = {"x-api-key": s2_key} if s2_key else {}
@@ -1450,6 +1484,7 @@ def render_mode2():
             st.number_input(
                 "Minimum relevance score", min_value=0, max_value=10, step=1,
                 key="m2_score_threshold",
+                on_change=_reset_results_page,
                 help="Re-filters scored papers instantly — no need to re-run the search.",
             )
         with info_col:
