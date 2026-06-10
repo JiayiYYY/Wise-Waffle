@@ -277,27 +277,24 @@ def render_paper_card(p):
     journal     = p.get("journal", "")
     pub_date    = p.get("pub_date", "") or p.get("year", "")
     cls         = tag_color(tag)
-    final   = p.get("final_score")
     impact  = p.get("impact_score")
     rel     = p.get("relevance_score")
-    if final is not None:
-        score_display_html = (f'<span class="paper-tag" style="background:#d4f0e8;color:#1a7a3a">'
-                              f'⭐ {final:.2f}</span>')
-    elif impact is not None:
-        score_display_html = (f'<span class="paper-tag" style="background:#fff3cd;color:#7a5700">'
-                              f'⚡ Impact {impact:.2f}</span>')
-    elif rel is not None:
-        score_display_html = (f'<span class="paper-tag" style="background:#e0f2e9;color:#1a7a3a">'
-                              f'★ {rel}/10</span>')
-    else:
-        score_display_html = ""
+    score_pills = []
+    if impact is not None:
+        score_pills.append(f'<span class="paper-tag" style="background:#fff3cd;color:#7a5700">⚡ {impact:.2f}</span>')
+    if rel is not None:
+        score_pills.append(f'<span class="paper-tag" style="background:#e0f2e9;color:#1a7a3a">★ {rel}/10</span>')
+    score_display_html = " ".join(score_pills)
+
+    search_term = p.get("search_term", "")
+    topic_text  = (search_term[:30] if search_term and tag.startswith("flex:") else topic_display(tag))
 
     st.markdown(f"""
     <div class="paper-card">
         <div class="paper-title">{title_html}</div>
         <div class="paper-meta">{authors_str} &nbsp;·&nbsp; {journal} &nbsp;·&nbsp; {pub_date}</div>
         <span class="paper-tag {cls}">{tier_label(tag)}</span>
-        <span class="paper-tag">{topic_display(tag)}</span>
+        <span class="paper-tag">{topic_text}</span>
         {score_display_html}
         {"<span class='paper-tag'>" + doi + "</span>" if doi else ""}
     </div>
@@ -306,7 +303,6 @@ def render_paper_card(p):
     reason   = p.get("relevance_reason", "")
     if abstract or reason:
         with st.expander("Abstract", expanded=False):
-            st.write("DEBUG abstract:", p.get("abstract", "MISSING"))
             if abstract:
                 st.markdown(f'<p class="abstract-text">{abstract[:800]}{"…" if len(abstract) > 800 else ""}</p>',
                             unsafe_allow_html=True)
@@ -556,9 +552,10 @@ def render_results(results, s2_key="", zotero_id="", zotero_key="",
                                       key="rr_search_filter", on_change=_reset_results_page)
     sc1, _ = st.columns([1, 4])
     with sc1:
-        sort_by = st.selectbox("Sort by", ["date_desc", "date_asc", "journal", "score_desc"],
+        sort_by = st.selectbox("Sort by", ["date_desc", "date_asc", "journal", "impact_desc", "score_desc"],
             format_func=lambda x: {"date_desc": "Newest first", "date_asc": "Oldest first",
-                                    "journal": "Journal A–Z", "score_desc": "Score (high → low)"}[x],
+                                    "journal": "Journal A–Z", "impact_desc": "Impact score (high → low)",
+                                    "score_desc": "Relevance score (high → low)"}[x],
             key="rr_sort_by", on_change=_reset_results_page)
 
     filtered = [p for p in results
@@ -578,6 +575,8 @@ def render_results(results, s2_key="", zotero_id="", zotero_key="",
         filtered = sorted(filtered, key=lambda p: p.get("pub_date", "") or p.get("year", ""), reverse=True)
     elif sort_by == "date_asc":
         filtered = sorted(filtered, key=lambda p: p.get("pub_date", "") or p.get("year", ""))
+    elif sort_by == "impact_desc":
+        filtered = sorted(filtered, key=lambda p: p.get("impact_score") if p.get("impact_score") is not None else -1, reverse=True)
     elif sort_by == "score_desc":
         filtered = sorted(filtered, key=lambda p: p.get("relevance_score") if p.get("relevance_score") is not None else -1, reverse=True)
     else:
@@ -1557,15 +1556,16 @@ def render_mode2():
                                 p["tag"] = "flex:crossover"
                             all_papers.extend(cx)
 
+                        lookback_yrs = st.session_state.get("m2_scholar_lookback", 10)
+
                         if scholars:
-                            lookback_yrs = st.session_state.get("m2_scholar_lookback", 10)
                             since_scholars = (_today_m2 - timedelta(days=lookback_yrs * 365)).strftime("%Y-%m-%d")
                             log_lines.append(f"\n── Deep scholars: {len(scholars)} name(s), {lookback_yrs}-year lookback ──"); update_log()
                             all_papers.extend(pf.run_authors_flexible(scholars, since_scholars))
 
                         if journals:
-                            log_lines.append(f"\n── Deep journals: {len(journals)} name(s), 10-year lookback ──"); update_log()
-                            all_papers.extend(pf.deep_search_openalex(journals, keywords=journal_keywords or None))
+                            log_lines.append(f"\n── Deep journals: {len(journals)} name(s), {lookback_yrs}-year lookback ──"); update_log()
+                            all_papers.extend(pf.deep_search_openalex(journals, keywords=journal_keywords or None, lookback_years=lookback_yrs))
 
                         all_papers = pf.deduplicate(all_papers)
                         log_lines.append(f"\n{len(all_papers)} papers after dedup"); update_log()
