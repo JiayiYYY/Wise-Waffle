@@ -206,12 +206,12 @@ def deduplicate(papers):
 
 # ── S2 bulk search ────────────────────────────────────────────────────────────
 
-def search_bulk(query, since="", until="", max_results=100):
+def search_bulk(query, since="", until="", max_results=100, sort="publicationDate:desc"):
     params = {
         "query":            query,
         "fields":           PAPER_FIELDS,
         "publicationTypes": "JournalArticle",
-        "sort":             "publicationDate:desc",
+        "sort":             sort,
         "fieldsOfStudy":    "Sociology,Psychology,Political Science,Education,Linguistics,Communication",
     }
     if since:
@@ -652,7 +652,7 @@ def deep_search_s2(keywords, max_per_keyword=100):
         if not kw:
             continue
         print(f"  [deep] keyword: {kw}")
-        papers = search_bulk(kw, since="", until="", max_results=max_per_keyword)
+        papers = search_bulk(kw, since="", until="", max_results=max_per_keyword, sort="citationCount:desc")
         collected.extend(normalize(p, tag="flex:keyword", search_term=kw) for p in papers)
         time.sleep(1.2)
     deduped = deduplicate(collected)
@@ -765,8 +765,9 @@ def score_papers(papers, research_focus, min_score=0, api_key="", batch_size=10)
         print("[relevance] 'anthropic' not installed — pip install anthropic")
         return papers
 
-    TOTAL_CAP = 500
+    TOTAL_CAP = 1000
     print(f"[scoring] TOTAL_CAP={TOTAL_CAP}")
+    print(f"[scoring] this may take several minutes for large paper sets")
 
     def _tag_in(p, *fragments):
         tag = p.get("tag", "")
