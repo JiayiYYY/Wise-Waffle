@@ -281,11 +281,20 @@ def render_paper_card(p):
     journal     = p.get("journal", "")
     pub_date    = p.get("pub_date", "") or p.get("year", "")
     cls         = tag_color(tag)
-    score       = p.get("relevance_score")
-    score_html  = f'<span class="paper-tag" style="background:#e0f2e9;color:#1a7a3a">★ {score}/10</span>' if score is not None else ""
-    impact      = p.get("impact_score")
-    impact_html = (f'<span class="paper-tag" style="background:#fff3cd;color:#7a5700">'
-                   f'⚡ {impact:.2f}</span>') if impact is not None else ""
+    final   = p.get("final_score")
+    impact  = p.get("impact_score")
+    rel     = p.get("relevance_score")
+    if final is not None:
+        score_display_html = (f'<span class="paper-tag" style="background:#d4f0e8;color:#1a7a3a">'
+                              f'⭐ {final:.2f}</span>')
+    elif impact is not None:
+        score_display_html = (f'<span class="paper-tag" style="background:#fff3cd;color:#7a5700">'
+                              f'⚡ Impact {impact:.2f}</span>')
+    elif rel is not None:
+        score_display_html = (f'<span class="paper-tag" style="background:#e0f2e9;color:#1a7a3a">'
+                              f'★ {rel}/10</span>')
+    else:
+        score_display_html = ""
 
     st.markdown(f"""
     <div class="paper-card">
@@ -293,8 +302,7 @@ def render_paper_card(p):
         <div class="paper-meta">{authors_str} &nbsp;·&nbsp; {journal} &nbsp;·&nbsp; {pub_date}</div>
         <span class="paper-tag {cls}">{tier_label(tag)}</span>
         <span class="paper-tag">{topic_display(tag)}</span>
-        {score_html}
-        {impact_html}
+        {score_display_html}
         {"<span class='paper-tag'>" + doi + "</span>" if doi else ""}
     </div>
     """, unsafe_allow_html=True)

@@ -698,11 +698,10 @@ def deep_search_openalex(journal_names, keywords=None, lookback_years=10):
 
 
 def compute_impact_score(papers):
-    """Set impact_score (0.0–1.0) on each paper based on citations, recency, and abstract.
+    """Set impact_score (0.0–1.0) on each paper based on citations and recency.
 
-    citation_count weight: 0.65 (log-normalised over batch)
-    recency weight:        0.25 (linear decay over 20 years)
-    abstract bonus:        0.10
+    citation_count weight: 0.72 (log-normalised over batch)
+    recency weight:        0.28 (linear decay over 20 years)
 
     Modifies papers in-place and returns the same list.
     """
@@ -719,15 +718,24 @@ def compute_impact_score(papers):
         except (ValueError, TypeError):
             year = 0
         recency = max(0.0, 1.0 - (current_year - year) / 20.0) if year else 0.0
-        abstract_bonus = 0.1 if (p.get("abstract") or "").strip() else 0.0
-        score = min(1.0, 0.65 * citation_norm + 0.25 * recency + abstract_bonus)
-        p["impact_score"] = round(score, 3)
+        p["impact_score"] = round(0.72 * citation_norm + 0.28 * recency, 3)
     return papers
 
 
 def deep_score_papers(papers, research_focus, api_key=""):
-    """Relevance-score papers for literature review context. Thin wrapper over score_papers."""
-    return score_papers(papers, research_focus, api_key=api_key)
+    """Relevance-score papers for literature review; computes final_score combining impact and relevance."""
+    scored = score_papers(papers, research_focus, api_key=api_key)
+    for p in scored:
+        imp = p.get("impact_score")
+        rel = p.get("relevance_score")
+        if imp is not None and rel is not None:
+            p["final_score"] = round(imp * 0.6 + (rel / 10) * 0.4, 3)
+        elif imp is not None:
+            p["final_score"] = imp
+        elif rel is not None:
+            p["final_score"] = round(rel / 10, 3)
+    scored.sort(key=lambda p: p.get("final_score", 0), reverse=True)
+    return scored
 
 
 # ── Tier helpers ──────────────────────────────────────────────────────────────
