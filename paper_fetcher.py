@@ -128,12 +128,14 @@ def _has_abstract(paper):
     abstract = paper.get("abstract") or ""
     return len(abstract.strip()) > 100
 
-def _is_recent(paper, since):
+def _is_recent(paper, since, until=""):
     pub = paper.get("publicationDate") or paper.get("pub_date", "")
     if pub:
-        return pub >= since
+        return pub >= since and (not until or pub <= until)
     year = paper.get("year") or paper.get("publication_year", "")
-    return str(year) >= since[:4] if year else False
+    if not year:
+        return False
+    return str(year) >= since[:4] and (not until or str(year) <= until[:4])
 
 def _log_step(n, label, count=None, detail=""):
     count_str  = f": {count} papers" if count is not None else ""
@@ -203,12 +205,12 @@ def deduplicate(papers):
 
 # ── S2 bulk search ────────────────────────────────────────────────────────────
 
-def search_bulk(query, since, max_results=100):
+def search_bulk(query, since, until="", max_results=100):
     params = {
         "query":                 query,
         "fields":                PAPER_FIELDS,
         "publicationTypes":      "JournalArticle",
-        "publicationDateOrYear": f"{since}:",
+        "publicationDateOrYear": f"{since}:{until}",
         "sort":                  "publicationDate:desc",
         "fieldsOfStudy": "Sociology,Psychology,Political Science,Education,Linguistics,Communication",
     }
@@ -248,7 +250,7 @@ def resolve_author_ids(names):
         time.sleep(1.2)
     return name_to_id
 
-def get_papers_for_authors(author_ids, since, papers_per_author=15):
+def get_papers_for_authors(author_ids, since, until="", papers_per_author=15):
     all_papers = []
     for author_id in author_ids:
         url  = f"{S2_BASE}/author/{author_id}/papers"
@@ -258,7 +260,7 @@ def get_papers_for_authors(author_ids, since, papers_per_author=15):
             continue
         papers  = data.get("data", [])
         total   = len(papers)
-        recent  = [p for p in papers if _is_recent(p, since) and _is_english(p) and _has_abstract(p)]
+        recent  = [p for p in papers if _is_recent(p, since, until) and _is_english(p) and _has_abstract(p)]
         recent  = sorted(recent, key=lambda p: p.get("publicationDate") or "", reverse=True)
         kept    = recent[:papers_per_author]
         dropped = total - len(recent)
@@ -270,7 +272,7 @@ def get_papers_for_authors(author_ids, since, papers_per_author=15):
 
 # ── Run search (Tier 1 + 2) ───────────────────────────────────────────────────
 
-def run_search(topics, since):
+def run_search(topics, since, until=""):
     collected = []
 
     print("\n[Tier 1] Core topic search")
@@ -279,7 +281,7 @@ def run_search(topics, since):
             continue
         print(f"  {group}")
         for kw in keywords:
-            papers = search_bulk(kw, since=since, max_results=10)
+            papers = search_bulk(kw, since=since, until=until, max_results=10)
             collected.extend(normalize(p, tag=f"tier1:{group}", search_term=kw) for p in papers)
             time.sleep(1.2)
 
@@ -289,7 +291,7 @@ def run_search(topics, since):
             continue
         print(f"  {group}")
         for kw in keywords:
-            papers = search_bulk(kw, since=since, max_results=5)
+            papers = search_bulk(kw, since=since, until=until, max_results=5)
             collected.extend(normalize(p, tag=f"tier2:{group}", search_term=kw) for p in papers)
             time.sleep(1.2)
 
@@ -299,7 +301,7 @@ def run_search(topics, since):
 
 # ── Run authors (Tier 3 + 4) ──────────────────────────────────────────────────
 
-def run_authors(topics, since):
+def run_authors(topics, since, until=""):
     scholar_names = list(topics["tier3_ascor_scholars"]["scholars"])
     for group, names in topics.get("tier4_global_scholars", {}).items():
         if not group.startswith("_"):
@@ -312,7 +314,7 @@ def run_authors(topics, since):
         return []
 
     print(f"\n[Tier 3] Fetching recent papers for {len(name_to_id)} scholars...")
-    raw_papers = get_papers_for_authors(list(name_to_id.values()), since=since)
+    raw_papers = get_papers_for_authors(list(name_to_id.values()), since=since, until=until)
 
     id_to_name = {v: k for k, v in name_to_id.items()}
     collected, journal_log = [], []
@@ -355,7 +357,7 @@ def _openalex_rebuild_abstract(inv):
     words.sort(key=lambda x: x[0])
     return " ".join(w for _, w in words)
 
-def run_journals(since):
+def run_journals(since, until=""):
     journal_cfg = load_json(JOURNALS_PATH)
     collected = []
     print("\n[Tier 5] OpenAlex journal sweep")
@@ -374,8 +376,9 @@ def run_journals(since):
 
             all_results, page = [], 1
             while True:
+                _date_filter = f"from_publication_date:{since}" + (f",to_publication_date:{until}" if until else "")
                 params = {
-                    "filter":   f"primary_location.source.id:{source_id},from_publication_date:{since},type:article",
+                    "filter":   f"primary_location.source.id:{source_id},{_date_filter},type:article",
                     "per-page": 100,
                     "page":     page,
                     "select":   "title,authorships,publication_date,publication_year,doi,abstract_inverted_index,primary_location,open_access,id",
@@ -412,7 +415,7 @@ def run_journals(since):
                     pdf     = oa.get("oa_url", "") or ""
                     pub_date = p.get("publication_date", "") or ""
 
-                    if pub_date and pub_date < since:
+                    if pub_date and (pub_date < since or (until and pub_date > until)):
                         continue
 
                     paper = {
@@ -445,7 +448,7 @@ def run_journals(since):
 
 # ── Flexible mode pipeline ───────────────────────────────────────────────────
 
-def run_keywords_flexible(keywords, since, max_per_keyword=20):
+def run_keywords_flexible(keywords, since, until="", max_per_keyword=20):
     """Search each keyword independently and return deduplicated normalized papers."""
     collected = []
     for kw in keywords:
@@ -453,7 +456,7 @@ def run_keywords_flexible(keywords, since, max_per_keyword=20):
         if not kw:
             continue
         print(f"  keyword: {kw}")
-        papers = search_bulk(kw, since=since, max_results=max_per_keyword)
+        papers = search_bulk(kw, since=since, until=until, max_results=max_per_keyword)
         collected.extend(normalize(p, tag="flex:keyword", search_term=kw) for p in papers)
         time.sleep(1.2)
     deduped = deduplicate(collected)
@@ -461,7 +464,7 @@ def run_keywords_flexible(keywords, since, max_per_keyword=20):
     return deduped
 
 
-def run_authors_flexible(author_names, since, papers_per_author=15):
+def run_authors_flexible(author_names, since, until="", papers_per_author=15):
     """Resolve author names/IDs to S2 IDs and fetch their recent papers.
 
     Numeric entries are treated as Semantic Scholar Author IDs and used directly;
@@ -493,7 +496,7 @@ def run_authors_flexible(author_names, since, papers_per_author=15):
     collected_flex = []
     for author_id in resolved_ids:
         scholar_label = id_to_name_flex.get(author_id, author_id)
-        raw = get_papers_for_authors([author_id], since=since, papers_per_author=papers_per_author)
+        raw = get_papers_for_authors([author_id], since=since, until=until, papers_per_author=papers_per_author)
         collected_flex.extend(normalize(p, tag="flex:scholar", search_term=scholar_label) for p in raw)
     deduped = deduplicate(collected_flex)
     print(f"\n[flex:scholars] {len(deduped)} papers after dedup")
@@ -520,12 +523,13 @@ def _openalex_source_id_by_name(journal_name):
     return None
 
 
-def _fetch_openalex_by_source_id(journal_name, source_id, since, tag="flex:journal", keyword=None, search_term=""):
+def _fetch_openalex_by_source_id(journal_name, source_id, since, until="", tag="flex:journal", keyword=None, search_term=""):
     """Paginate OpenAlex works for a given source ID and return normalized papers."""
+    _date_filter = f"from_publication_date:{since}" + (f",to_publication_date:{until}" if until else "")
     all_results, page = [], 1
     while True:
         params = {
-            "filter":   f"primary_location.source.id:{source_id},from_publication_date:{since},type:article",
+            "filter":   f"primary_location.source.id:{source_id},{_date_filter},type:article",
             "per-page": 100,
             "page":     page,
             "select":   "title,authorships,publication_date,publication_year,doi,"
@@ -570,7 +574,7 @@ def _fetch_openalex_by_source_id(journal_name, source_id, since, tag="flex:journ
             oa       = p.get("open_access") or {}
             pdf      = oa.get("oa_url", "") or ""
             pub_date = p.get("publication_date", "") or ""
-            if pub_date and pub_date < since:
+            if pub_date and (pub_date < since or (until and pub_date > until)):
                 continue
             all_results.append({
                 "title":           p.get("title", "") or "Untitled",
@@ -590,7 +594,7 @@ def _fetch_openalex_by_source_id(journal_name, source_id, since, tag="flex:journ
     return [normalize(p, tag=tag, search_term=search_term) for p in all_results]
 
 
-def run_journals_flexible(journal_names, since, keywords=None):
+def run_journals_flexible(journal_names, since, until="", keywords=None):
     """Sweep journals supplied by name or OpenAlex Source ID (e.g. S12345678).
 
     Entries matching the pattern S\\d+ are used as Source IDs directly, skipping
@@ -619,7 +623,7 @@ def run_journals_flexible(journal_names, since, keywords=None):
 
         journal_papers = []
         for i, kw in enumerate(kw_list):
-            papers = _fetch_openalex_by_source_id(label, source_id, since,
+            papers = _fetch_openalex_by_source_id(label, source_id, since, until=until,
                                                    tag="flex:journal", keyword=kw,
                                                    search_term=label)
             journal_papers.extend(papers)

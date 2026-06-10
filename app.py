@@ -959,22 +959,23 @@ Get a free API key at [semanticscholar.org/product/api](https://www.semanticscho
         extra_scholars   = [l.strip() for l in extra_scholars_raw.splitlines() if l.strip()]
         extra_journals_l = [l.strip() for l in extra_journals_raw.splitlines() if l.strip()]
 
+        until = date_to.strftime("%Y-%m-%d")
         try:
             with st.spinner("Fetching papers…"):
                 all_papers = []
                 if run_keywords:
                     _log_step("\n── Tier 1 & 2: Keyword search ──")
-                    all_papers.extend(pf.run_search(topics, since))
+                    all_papers.extend(pf.run_search(topics, since, until=until))
                 else:
                     _log_step("── Tier 1 & 2: skipped ──")
                 if run_scholars:
                     _log_step("\n── Tier 3 & 4: Scholar tracking ──")
-                    all_papers.extend(pf.run_authors(topics, since))
+                    all_papers.extend(pf.run_authors(topics, since, until=until))
                 else:
                     _log_step("── Tier 3 & 4: skipped ──")
                 if run_journals_chk:
                     _log_step("\n── Tier 5: Journal sweep ──")
-                    all_papers.extend(pf.run_journals(since))
+                    all_papers.extend(pf.run_journals(since, until=until))
                 else:
                     _log_step("── Tier 5: skipped ──")
                 if sum([run_keywords, run_scholars, run_journals_chk]) > 1:
@@ -982,14 +983,14 @@ Get a free API key at [semanticscholar.org/product/api](https://www.semanticscho
 
                 if extra_keywords:
                     _log_step(f"\n── Extra keywords: {len(extra_keywords)} term(s) ──")
-                    xk = pf.run_keywords_flexible(extra_keywords, since)
+                    xk = pf.run_keywords_flexible(extra_keywords, since, until=until)
                     all_papers.extend(xk)
                 if extra_scholars:
                     _log_step(f"\n── Extra scholars: {len(extra_scholars)} ──")
-                    all_papers.extend(pf.run_authors_flexible(extra_scholars, since))
+                    all_papers.extend(pf.run_authors_flexible(extra_scholars, since, until=until))
                 if extra_journals_l:
                     _log_step(f"\n── Extra journals: {len(extra_journals_l)} ──")
-                    all_papers.extend(pf.run_journals_flexible(extra_journals_l, since))
+                    all_papers.extend(pf.run_journals_flexible(extra_journals_l, since, until=until))
                 if extra_keywords or extra_scholars or extra_journals_l:
                     all_papers = pf.deduplicate(all_papers)
 
@@ -1342,28 +1343,29 @@ def render_mode2():
                 original_print(*args, **kwargs)
             builtins.print = patched_print
 
+            until = date_to.strftime("%Y-%m-%d")
             try:
                 with st.spinner("Fetching papers…"):
                     all_papers = []
 
                     if keywords:
                         log_lines.append(f"\n── Keywords: {len(keywords)} term(s) ──"); update_log()
-                        all_papers.extend(pf.run_keywords_flexible(keywords, since, max_per_keyword=20))
+                        all_papers.extend(pf.run_keywords_flexible(keywords, since, until=until, max_per_keyword=20))
 
                     if crossovers:
                         log_lines.append(f"\n── Crossover keywords: {len(crossovers)} term(s) ──"); update_log()
-                        cx = pf.run_keywords_flexible(crossovers, since, max_per_keyword=8)
+                        cx = pf.run_keywords_flexible(crossovers, since, until=until, max_per_keyword=8)
                         for p in cx:
                             p["tag"] = "flex:crossover"
                         all_papers.extend(cx)
 
                     if scholars:
                         log_lines.append(f"\n── Scholars: {len(scholars)} name(s) ──"); update_log()
-                        all_papers.extend(pf.run_authors_flexible(scholars, since))
+                        all_papers.extend(pf.run_authors_flexible(scholars, since, until=until))
 
                     if journals:
                         log_lines.append(f"\n── Journals: {len(journals)} name(s) ──"); update_log()
-                        all_papers.extend(pf.run_journals_flexible(journals, since, keywords=journal_keywords or None))
+                        all_papers.extend(pf.run_journals_flexible(journals, since, until=until, keywords=journal_keywords or None))
 
                     all_papers = pf.deduplicate(all_papers)
                     log_lines.append(f"\n{len(all_papers)} papers after cross-source dedup"); update_log()
