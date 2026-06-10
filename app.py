@@ -101,7 +101,8 @@ hr { border-color:var(--soft); }
 BASE_DIR    = Path(__file__).parent
 CONFIG_PATH = BASE_DIR / "config.json"
 TOPICS_PATH = BASE_DIR / "topics.json"
-SAVED_PATH  = BASE_DIR / "saved_dois.json"
+SAVED_PATH   = BASE_DIR / "saved_dois.json"
+SEARCHES_PATH = BASE_DIR / "saved_searches.json"
 
 TOPIC_LABELS = {
     "tier1:ai_fairness_decolonial":          "AI Fairness & Decolonial",
@@ -143,6 +144,90 @@ def load_json_safe(path):
 def saved_count():
     data = load_json_safe(SAVED_PATH)
     return len(data) if data else 0
+
+def load_searches():
+    data = load_json_safe(SEARCHES_PATH)
+    if not data or not isinstance(data, dict):
+        return {"profiles": {}, "snapshots": {}}
+    data.setdefault("profiles", {})
+    data.setdefault("snapshots", {})
+    return data
+
+def save_searches(data):
+    with open(SEARCHES_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+_SNAP_PAPER_FIELDS = ("title", "doi", "year", "pub_date", "journal", "authors",
+                      "tag", "relevance_score", "relevance_reason", "url")
+
+def _trim_papers(papers):
+    return [{k: p.get(k) for k in _SNAP_PAPER_FIELDS} for p in papers]
+
+def _capture_m1_config(date_from, date_to):
+    return {
+        "date_from":      str(date_from),
+        "date_to":        str(date_to),
+        "run_keywords":   st.session_state.get("m1_run_keywords", True),
+        "run_scholars":   st.session_state.get("m1_run_scholars", True),
+        "run_journals":   st.session_state.get("m1_run_journals", True),
+        "research_focus": st.session_state.get("research_focus_input", ""),
+        "extra_keywords": st.session_state.get("m1_extra_keywords", ""),
+        "extra_scholars": st.session_state.get("m1_extra_scholars", ""),
+        "extra_journals": st.session_state.get("m1_extra_journals", ""),
+    }
+
+def _restore_m1_config(cfg):
+    for sk, ck in [
+        ("m1_run_keywords",    "run_keywords"),
+        ("m1_run_scholars",    "run_scholars"),
+        ("m1_run_journals",    "run_journals"),
+        ("research_focus_input", "research_focus"),
+        ("m1_extra_keywords",  "extra_keywords"),
+        ("m1_extra_scholars",  "extra_scholars"),
+        ("m1_extra_journals",  "extra_journals"),
+    ]:
+        if ck in cfg:
+            st.session_state[sk] = cfg[ck]
+    from datetime import date
+    for dk in ("m1_date_from", "m1_date_to"):
+        ck = dk[3:]  # "date_from" / "date_to"
+        if ck in cfg:
+            try:
+                st.session_state[dk] = date.fromisoformat(cfg[ck])
+            except ValueError:
+                pass
+
+def _capture_m2_config(date_from, date_to):
+    return {
+        "date_from":       str(date_from),
+        "date_to":         str(date_to),
+        "keywords":        st.session_state.get("m2_keywords", ""),
+        "crossover":       st.session_state.get("m2_crossover", ""),
+        "scholars":        st.session_state.get("m2_scholars", ""),
+        "journals":        st.session_state.get("m2_journals", ""),
+        "journal_keywords": st.session_state.get("m2_journal_keywords", ""),
+        "research_focus":  st.session_state.get("m2_research_focus", ""),
+    }
+
+def _restore_m2_config(cfg):
+    for sk, ck in [
+        ("m2_keywords",        "keywords"),
+        ("m2_crossover",       "crossover"),
+        ("m2_scholars",        "scholars"),
+        ("m2_journals",        "journals"),
+        ("m2_journal_keywords", "journal_keywords"),
+        ("m2_research_focus",  "research_focus"),
+    ]:
+        if ck in cfg:
+            st.session_state[sk] = cfg[ck]
+    from datetime import date
+    for dk in ("m2_date_from", "m2_date_to"):
+        ck = dk[3:]
+        if ck in cfg:
+            try:
+                st.session_state[dk] = date.fromisoformat(cfg[ck])
+            except ValueError:
+                pass
 
 def get_topic_key(tag):
     if tag.startswith("ascor"): return "tier3:ascor"
@@ -306,7 +391,8 @@ def build_config(s2_key, zotero_id, zotero_key, notion_tok, notion_db, collectio
 for k, v in {"results": [], "saved_this": 0, "selected_keys": set(), "results_page": 1,
              "last_filtered_count": 0, "prefill": False, "log_lines": [],
              "network_paper_key": None, "network_cache": {}, "view": "landing",
-             "m2_all_scored": [], "m2_score_threshold": 6}.items():
+             "m2_all_scored": [], "m2_score_threshold": 6,
+             "m1_save_name": "", "m2_save_name": ""}.items():
     if k not in st.session_state:
         st.session_state[k] = v
 
@@ -705,6 +791,53 @@ Get a free API key at [semanticscholar.org/product/api](https://www.semanticscho
 """)
 
         st.divider()
+        _searches_m1 = load_searches()
+        _profiles_m1 = _searches_m1.get("profiles", {})
+        _snaps_m1    = _searches_m1.get("snapshots", {})
+        if _profiles_m1:
+            with st.expander("📂 Load saved search config"):
+                _chosen_profile_m1 = st.selectbox(
+                    "Profile", [""] + list(_profiles_m1.keys()),
+                    format_func=lambda x: "— select —" if x == "" else x,
+                    key="m1_load_profile",
+                )
+                lp1, lp2 = st.columns(2)
+                with lp1:
+                    if st.button("Load", key="m1_load_btn", disabled=not _chosen_profile_m1):
+                        _restore_m1_config(_profiles_m1[_chosen_profile_m1]["config"])
+                        st.success(f'Loaded "{_chosen_profile_m1}"')
+                        st.rerun()
+                with lp2:
+                    if st.button("Delete", key="m1_del_profile", disabled=not _chosen_profile_m1):
+                        del _searches_m1["profiles"][_chosen_profile_m1]
+                        save_searches(_searches_m1)
+                        st.success("Deleted.")
+                        st.rerun()
+        if _snaps_m1:
+            with st.expander("📚 Saved snapshots"):
+                _chosen_snap_m1 = st.selectbox(
+                    "Snapshot", [""] + list(reversed(list(_snaps_m1.keys()))),
+                    format_func=lambda x: "— select —" if x == "" else x,
+                    key="m1_load_snap",
+                )
+                if _chosen_snap_m1:
+                    _s = _snaps_m1[_chosen_snap_m1]
+                    st.caption(f'{_s["paper_count"]} papers · {_s["timestamp"][:10]}')
+                    sv1, sv2 = st.columns(2)
+                    with sv1:
+                        if st.button("View", key="m1_view_snap"):
+                            st.session_state["results"]       = _s["papers"]
+                            st.session_state["results_page"]  = 1
+                            st.session_state["selected_keys"] = set()
+                            st.rerun()
+                    with sv2:
+                        if st.button("Delete", key="m1_del_snap"):
+                            del _searches_m1["snapshots"][_chosen_snap_m1]
+                            save_searches(_searches_m1)
+                            st.success("Deleted.")
+                            st.rerun()
+
+        st.divider()
         st.markdown("### Search Settings")
         st.caption("Tiers to run")
         run_keywords     = st.checkbox("Keywords (Tier 1+2)",  value=True, key="m1_run_keywords")
@@ -715,9 +848,11 @@ Get a free API key at [semanticscholar.org/product/api](https://www.semanticscho
                                     "zotero": "Zotero only", "notion": "Notion only"}[x])
         _today    = datetime.today().date()
         date_from = st.date_input("From", value=_today - timedelta(days=30),
-                                  min_value=_today - timedelta(days=5*365), max_value=_today)
+                                  min_value=_today - timedelta(days=5*365), max_value=_today,
+                                  key="m1_date_from")
         date_to   = st.date_input("To",   value=_today,
-                                  min_value=_today - timedelta(days=5*365), max_value=_today)
+                                  min_value=_today - timedelta(days=5*365), max_value=_today,
+                                  key="m1_date_to")
         if date_from > date_to:
             st.error("'From' date must not be after 'To'.")
         dry_run   = st.checkbox("Dry run (preview, don't save)", value=True)
@@ -934,6 +1069,48 @@ Get a free API key at [semanticscholar.org/product/api](https://www.semanticscho
         anthropic_key=anthropic_key,
     )
 
+    if st.session_state.get("results"):
+        with st.expander("💾 Save this search", expanded=False):
+            sn_col, sb_col = st.columns([3, 2])
+            with sn_col:
+                _m1_save_name = st.text_input(
+                    "Profile name", placeholder="e.g. weekly comm, gender studies 2026",
+                    key="m1_save_name_input",
+                )
+            with sb_col:
+                st.markdown("<div style='height:1.85rem'></div>", unsafe_allow_html=True)
+                sc1, sc2 = st.columns(2)
+                with sc1:
+                    if st.button("Save config", key="m1_save_cfg_btn", disabled=not _m1_save_name):
+                        _sd = load_searches()
+                        _sd["profiles"][_m1_save_name] = {
+                            "name":    _m1_save_name,
+                            "mode":    "mode1",
+                            "created": datetime.now().isoformat(),
+                            "config":  _capture_m1_config(date_from, date_to),
+                        }
+                        save_searches(_sd)
+                        st.success(f'Profile "{_m1_save_name}" saved.')
+                with sc2:
+                    if st.button("Save snapshot", key="m1_save_snap_btn", disabled=not _m1_save_name):
+                        _sd = load_searches()
+                        _snap_key = f"{_m1_save_name} — {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+                        _papers_now = st.session_state["results"]
+                        _sd["snapshots"][_snap_key] = {
+                            "name":         _snap_key,
+                            "profile_name": _m1_save_name,
+                            "mode":         "mode1",
+                            "timestamp":    datetime.now().isoformat(),
+                            "paper_count":  len(_papers_now),
+                            "papers":       _trim_papers(_papers_now),
+                        }
+                        # keep only 20 most recent snapshots
+                        if len(_sd["snapshots"]) > 20:
+                            oldest = list(_sd["snapshots"].keys())[0]
+                            del _sd["snapshots"][oldest]
+                        save_searches(_sd)
+                        st.success(f'Snapshot "{_snap_key}" saved ({len(_papers_now)} papers).')
+
 # ── Mode 2 ────────────────────────────────────────────────────────────────────
 def render_mode2():
     with st.sidebar:
@@ -975,6 +1152,53 @@ def render_mode2():
         notion_db     = st.session_state.get("m2_notion_db", "")
         anthropic_key = st.session_state.get("m2_anthropic_key", "")
         zotero_coll   = st.session_state.get("m2_zotero_coll", "")
+
+        st.divider()
+        _searches_m2 = load_searches()
+        _profiles_m2 = _searches_m2.get("profiles", {})
+        _snaps_m2    = _searches_m2.get("snapshots", {})
+        if _profiles_m2:
+            with st.expander("📂 Load saved search config"):
+                _chosen_profile_m2 = st.selectbox(
+                    "Profile", [""] + list(_profiles_m2.keys()),
+                    format_func=lambda x: "— select —" if x == "" else x,
+                    key="m2_load_profile",
+                )
+                lp1, lp2 = st.columns(2)
+                with lp1:
+                    if st.button("Load", key="m2_load_btn", disabled=not _chosen_profile_m2):
+                        _restore_m2_config(_profiles_m2[_chosen_profile_m2]["config"])
+                        st.success(f'Loaded "{_chosen_profile_m2}"')
+                        st.rerun()
+                with lp2:
+                    if st.button("Delete", key="m2_del_profile", disabled=not _chosen_profile_m2):
+                        del _searches_m2["profiles"][_chosen_profile_m2]
+                        save_searches(_searches_m2)
+                        st.success("Deleted.")
+                        st.rerun()
+        if _snaps_m2:
+            with st.expander("📚 Saved snapshots"):
+                _chosen_snap_m2 = st.selectbox(
+                    "Snapshot", [""] + list(reversed(list(_snaps_m2.keys()))),
+                    format_func=lambda x: "— select —" if x == "" else x,
+                    key="m2_load_snap",
+                )
+                if _chosen_snap_m2:
+                    _s2 = _snaps_m2[_chosen_snap_m2]
+                    st.caption(f'{_s2["paper_count"]} papers · {_s2["timestamp"][:10]}')
+                    sv1, sv2 = st.columns(2)
+                    with sv1:
+                        if st.button("View", key="m2_view_snap"):
+                            st.session_state["results"]       = _s2["papers"]
+                            st.session_state["results_page"]  = 1
+                            st.session_state["selected_keys"] = set()
+                            st.rerun()
+                    with sv2:
+                        if st.button("Delete", key="m2_del_snap"):
+                            del _searches_m2["snapshots"][_chosen_snap_m2]
+                            save_searches(_searches_m2)
+                            st.success("Deleted.")
+                            st.rerun()
 
         st.divider()
         st.markdown("### Settings")
@@ -1247,6 +1471,47 @@ def render_mode2():
                 f'{_kept} of {len(_m2_all_scored)} papers shown at score ≥ {_thr}</div>',
                 unsafe_allow_html=True,
             )
+
+    if st.session_state.get("results"):
+        with st.expander("💾 Save this search", expanded=False):
+            sn_col, sb_col = st.columns([3, 2])
+            with sn_col:
+                _m2_save_name = st.text_input(
+                    "Profile name", placeholder="e.g. misinformation sweep, orben scholars",
+                    key="m2_save_name_input",
+                )
+            with sb_col:
+                st.markdown("<div style='height:1.85rem'></div>", unsafe_allow_html=True)
+                sc1, sc2 = st.columns(2)
+                with sc1:
+                    if st.button("Save config", key="m2_save_cfg_btn", disabled=not _m2_save_name):
+                        _sd = load_searches()
+                        _sd["profiles"][_m2_save_name] = {
+                            "name":    _m2_save_name,
+                            "mode":    "mode2",
+                            "created": datetime.now().isoformat(),
+                            "config":  _capture_m2_config(date_from, date_to),
+                        }
+                        save_searches(_sd)
+                        st.success(f'Profile "{_m2_save_name}" saved.')
+                with sc2:
+                    if st.button("Save snapshot", key="m2_save_snap_btn", disabled=not _m2_save_name):
+                        _sd = load_searches()
+                        _snap_key = f"{_m2_save_name} — {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+                        _papers_now = st.session_state["results"]
+                        _sd["snapshots"][_snap_key] = {
+                            "name":         _snap_key,
+                            "profile_name": _m2_save_name,
+                            "mode":         "mode2",
+                            "timestamp":    datetime.now().isoformat(),
+                            "paper_count":  len(_papers_now),
+                            "papers":       _trim_papers(_papers_now),
+                        }
+                        if len(_sd["snapshots"]) > 20:
+                            oldest = list(_sd["snapshots"].keys())[0]
+                            del _sd["snapshots"][oldest]
+                        save_searches(_sd)
+                        st.success(f'Snapshot "{_snap_key}" saved ({len(_papers_now)} papers).')
 
 # ── Router ────────────────────────────────────────────────────────────────────
 view = st.session_state.get("view", "landing")
