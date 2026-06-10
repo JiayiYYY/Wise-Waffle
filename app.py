@@ -635,10 +635,17 @@ def render_results(results, s2_key="", zotero_id="", zotero_key="",
     with sel1:
         if st.button("☑ Select page"):
             for p in page_papers:
-                st.session_state["selected_keys"].add(paper_key(p))
+                pk = paper_key(p)
+                st.session_state["selected_keys"].add(pk)
+                st.session_state[f"chk_{pk[:60]}"] = True
+            st.rerun()
     with sel2:
         if st.button("☐ Clear all"):
             st.session_state["selected_keys"] = set()
+            for _k in list(st.session_state.keys()):
+                if _k.startswith("chk_"):
+                    st.session_state[_k] = False
+            st.rerun()
 
     n_selected = len(st.session_state["selected_keys"])
     if n_selected:
