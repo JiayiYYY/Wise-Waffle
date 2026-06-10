@@ -678,7 +678,7 @@ def render_results(results, s2_key="", zotero_id="", zotero_key="",
                         <span style="font-family:'DM Mono',monospace;font-size:0.72rem;color:#8a8480">{n}</span>
                       </div>
                       <div style="background:#ede8e0;border-radius:2px;height:5px">
-                        <div style="background:#d63d6e;width:{bar_w}%;height:5px;border-radius:2px"></div>
+                        <div style="background:#d63d6e;width:{_bar_w}%;height:5px;border-radius:2px"></div>
                       </div></div>""", unsafe_allow_html=True)
             else:
                 st.caption("No journal data available.")
