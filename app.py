@@ -588,21 +588,100 @@ def render_results(results, s2_key="", zotero_id="", zotero_key="",
         filtered = sorted(filtered, key=lambda p: p.get("journal", "").lower())
 
     with st.expander("📊 Results breakdown", expanded=True):
-        st.markdown("**Top journals** *(filtered)*")
-        jlist = [p["journal"] for p in filtered if p.get("journal")]
-        if jlist:
-            top_j = Counter(jlist).most_common(8)
-            max_j = top_j[0][1]
-            for j, n in top_j:
-                bar_w = int((n / max_j) * 100)
-                st.markdown(f"""<div style="margin-bottom:8px">
-                  <div style="display:flex;justify-content:space-between;margin-bottom:2px">
-                    <span style="font-size:0.78rem;color:#444">{j[:40]}</span>
-                    <span style="font-family:'DM Mono',monospace;font-size:0.72rem;color:#8a8480">{n}</span>
-                  </div>
-                  <div style="background:#ede8e0;border-radius:2px;height:5px">
-                    <div style="background:#d63d6e;width:{bar_w}%;height:5px;border-radius:2px"></div>
-                  </div></div>""", unsafe_allow_html=True)
+        _tab_tl, _tab_sc, _tab_au, _tab_jn = st.tabs(
+            ["📅 Timeline", "⭐ Score distribution", "👤 Top authors", "📰 Top journals"]
+        )
+
+        # ── Timeline ──────────────────────────────────────────────────────────
+        with _tab_tl:
+            _years = [p.get("pub_date", "")[:4] or p.get("year", "") for p in filtered]
+            _years = [y for y in _years if y and y.isdigit()]
+            if _years:
+                _yr_counts = Counter(_years)
+                _yr_sorted = sorted(_yr_counts.keys())
+                _yr_data   = {y: _yr_counts[y] for y in _yr_sorted}
+                import pandas as _pd
+                _tl_df = _pd.DataFrame({"Year": list(_yr_data.keys()), "Papers": list(_yr_data.values())})
+                _tl_df = _tl_df.set_index("Year")
+                st.bar_chart(_tl_df, use_container_width=True)
+            else:
+                st.caption("No year data available.")
+
+        # ── Score distribution ────────────────────────────────────────────────
+        with _tab_sc:
+            _scored_papers = [p for p in filtered if p.get("final_score") is not None
+                              or p.get("relevance_score") is not None
+                              or p.get("impact_score") is not None]
+            if _scored_papers:
+                # Prefer final_score, then relevance_score (0-10), then impact_score (0-1)
+                _has_final = any(p.get("final_score") is not None for p in _scored_papers)
+                _has_rel   = any(p.get("relevance_score") is not None for p in _scored_papers)
+                if _has_final:
+                    _vals = [p["final_score"] for p in _scored_papers if p.get("final_score") is not None]
+                    _bins = [round(i * 0.1, 1) for i in range(11)]
+                    _label = "Final score (0–1)"
+                elif _has_rel:
+                    _vals = [p["relevance_score"] for p in _scored_papers if p.get("relevance_score") is not None]
+                    _bins = list(range(11))
+                    _label = "Relevance score (0–10)"
+                else:
+                    _vals = [p["impact_score"] for p in _scored_papers if p.get("impact_score") is not None]
+                    _bins = [round(i * 0.1, 1) for i in range(11)]
+                    _label = "Impact score (0–1)"
+                import pandas as _pd
+                _bin_counts = Counter()
+                for v in _vals:
+                    _b = min(int(v * 10) / 10 if _has_final or not _has_rel else int(v), _bins[-2])
+                    _bin_counts[_b] += 1
+                _sc_df = _pd.DataFrame(
+                    {_label: [str(b) for b in _bins[:-1]], "Papers": [_bin_counts.get(b, 0) for b in _bins[:-1]]}
+                ).set_index(_label)
+                st.bar_chart(_sc_df, use_container_width=True)
+            else:
+                st.caption("No scored papers in current filter.")
+
+        # ── Top authors ───────────────────────────────────────────────────────
+        with _tab_au:
+            _author_counts: Counter = Counter()
+            for p in filtered:
+                for a in p.get("authors", []):
+                    name = a.strip() if isinstance(a, str) else ""
+                    if name:
+                        _author_counts[name] += 1
+            if _author_counts:
+                _top_authors = _author_counts.most_common(15)
+                _max_a = _top_authors[0][1]
+                for _aname, _an in reversed(_top_authors):
+                    _bar_w = int((_an / _max_a) * 100)
+                    st.markdown(f"""<div style="margin-bottom:6px">
+                      <div style="display:flex;justify-content:space-between;margin-bottom:2px">
+                        <span style="font-size:0.78rem;color:#444">{_aname[:45]}</span>
+                        <span style="font-family:'DM Mono',monospace;font-size:0.72rem;color:#8a8480">{_an}</span>
+                      </div>
+                      <div style="background:#ede8e0;border-radius:2px;height:5px">
+                        <div style="background:#4a90d9;width:{_bar_w}%;height:5px;border-radius:2px"></div>
+                      </div></div>""", unsafe_allow_html=True)
+            else:
+                st.caption("No author data available.")
+
+        # ── Top journals ──────────────────────────────────────────────────────
+        with _tab_jn:
+            _jlist = [p["journal"] for p in filtered if p.get("journal")]
+            if _jlist:
+                _top_j = Counter(_jlist).most_common(8)
+                _max_j = _top_j[0][1]
+                for j, n in _top_j:
+                    _bar_w = int((n / _max_j) * 100)
+                    st.markdown(f"""<div style="margin-bottom:8px">
+                      <div style="display:flex;justify-content:space-between;margin-bottom:2px">
+                        <span style="font-size:0.78rem;color:#444">{j[:40]}</span>
+                        <span style="font-family:'DM Mono',monospace;font-size:0.72rem;color:#8a8480">{n}</span>
+                      </div>
+                      <div style="background:#ede8e0;border-radius:2px;height:5px">
+                        <div style="background:#d63d6e;width:{bar_w}%;height:5px;border-radius:2px"></div>
+                      </div></div>""", unsafe_allow_html=True)
+            else:
+                st.caption("No journal data available.")
 
     st.markdown("---")
 
