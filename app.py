@@ -580,44 +580,21 @@ def render_results(results, s2_key="", zotero_id="", zotero_key="",
         filtered = sorted(filtered, key=lambda p: p.get("journal", "").lower())
 
     with st.expander("📊 Results breakdown", expanded=True):
-        col_chart, col_journals_chart = st.columns(2)
-        with col_chart:
-            st.markdown("**Papers per topic** *(filtered)*")
-            ftc = Counter(get_topic_key(p["tag"]) for p in filtered)
-            sorted_t = sorted(ftc.items(), key=lambda x: -x[1])
-            max_n = sorted_t[0][1] if sorted_t else 1
-            for tk, n in sorted_t:
-                label = TOPIC_LABELS.get(tk, tk)
-                bar_w = int((n / max_n) * 100)
-                if tk.startswith("tier1"):   color = "#d63d6e"
-                elif tk.startswith("tier2"): color = "#2aaa8a"
-                elif tk.startswith("tier5"): color = "#6b3a8f"
-                elif tk.startswith("flex"):  color = "#4a90d9"
-                else:                        color = "#b87c0a"
+        st.markdown("**Top journals** *(filtered)*")
+        jlist = [p["journal"] for p in filtered if p.get("journal")]
+        if jlist:
+            top_j = Counter(jlist).most_common(8)
+            max_j = top_j[0][1]
+            for j, n in top_j:
+                bar_w = int((n / max_j) * 100)
                 st.markdown(f"""<div style="margin-bottom:8px">
                   <div style="display:flex;justify-content:space-between;margin-bottom:2px">
-                    <span style="font-size:0.78rem;color:#444">{label}</span>
+                    <span style="font-size:0.78rem;color:#444">{j[:40]}</span>
                     <span style="font-family:'DM Mono',monospace;font-size:0.72rem;color:#8a8480">{n}</span>
                   </div>
                   <div style="background:#ede8e0;border-radius:2px;height:5px">
-                    <div style="background:{color};width:{bar_w}%;height:5px;border-radius:2px"></div>
+                    <div style="background:#d63d6e;width:{bar_w}%;height:5px;border-radius:2px"></div>
                   </div></div>""", unsafe_allow_html=True)
-        with col_journals_chart:
-            st.markdown("**Top journals** *(filtered)*")
-            jlist = [p["journal"] for p in filtered if p.get("journal")]
-            if jlist:
-                top_j = Counter(jlist).most_common(8)
-                max_j = top_j[0][1]
-                for j, n in top_j:
-                    bar_w = int((n / max_j) * 100)
-                    st.markdown(f"""<div style="margin-bottom:8px">
-                      <div style="display:flex;justify-content:space-between;margin-bottom:2px">
-                        <span style="font-size:0.78rem;color:#444">{j[:40]}</span>
-                        <span style="font-family:'DM Mono',monospace;font-size:0.72rem;color:#8a8480">{n}</span>
-                      </div>
-                      <div style="background:#ede8e0;border-radius:2px;height:5px">
-                        <div style="background:#d63d6e;width:{bar_w}%;height:5px;border-radius:2px"></div>
-                      </div></div>""", unsafe_allow_html=True)
 
     st.markdown("---")
 
