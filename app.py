@@ -158,7 +158,8 @@ def save_searches(data):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 _SNAP_PAPER_FIELDS = ("title", "doi", "year", "pub_date", "journal", "authors",
-                      "tag", "search_term", "relevance_score", "relevance_reason", "url")
+                      "tag", "search_term", "relevance_score", "relevance_reason",
+                      "url", "citation_count", "impact_score")
 
 def _trim_papers(papers):
     return [{k: p.get(k) for k in _SNAP_PAPER_FIELDS} for p in papers]
@@ -199,24 +200,30 @@ def _restore_m1_config(cfg):
 
 def _capture_m2_config(date_from, date_to):
     return {
-        "date_from":       str(date_from),
-        "date_to":         str(date_to),
-        "keywords":        st.session_state.get("m2_keywords", ""),
-        "crossover":       st.session_state.get("m2_crossover", ""),
-        "scholars":        st.session_state.get("m2_scholars", ""),
-        "journals":        st.session_state.get("m2_journals", ""),
+        "date_from":        str(date_from),
+        "date_to":          str(date_to),
+        "keywords":         st.session_state.get("m2_keywords", ""),
+        "crossover":        st.session_state.get("m2_crossover", ""),
+        "scholars":         st.session_state.get("m2_scholars", ""),
+        "journals":         st.session_state.get("m2_journals", ""),
         "journal_keywords": st.session_state.get("m2_journal_keywords", ""),
-        "research_focus":  st.session_state.get("m2_research_focus", ""),
+        "research_focus":   st.session_state.get("m2_research_focus", ""),
+        "search_mode":      st.session_state.get("m2_search_mode", "recent"),
+        "impact_threshold": st.session_state.get("m2_impact_threshold", 0.3),
+        "scholar_lookback": st.session_state.get("m2_scholar_lookback", 10),
     }
 
 def _restore_m2_config(cfg):
     for sk, ck in [
-        ("m2_keywords",        "keywords"),
-        ("m2_crossover",       "crossover"),
-        ("m2_scholars",        "scholars"),
-        ("m2_journals",        "journals"),
+        ("m2_keywords",         "keywords"),
+        ("m2_crossover",        "crossover"),
+        ("m2_scholars",         "scholars"),
+        ("m2_journals",         "journals"),
         ("m2_journal_keywords", "journal_keywords"),
-        ("m2_research_focus",  "research_focus"),
+        ("m2_research_focus",   "research_focus"),
+        ("m2_search_mode",      "search_mode"),
+        ("m2_impact_threshold", "impact_threshold"),
+        ("m2_scholar_lookback", "scholar_lookback"),
     ]:
         if ck in cfg:
             st.session_state[sk] = cfg[ck]
@@ -276,6 +283,9 @@ def render_paper_card(p):
     cls         = tag_color(tag)
     score       = p.get("relevance_score")
     score_html  = f'<span class="paper-tag" style="background:#e0f2e9;color:#1a7a3a">★ {score}/10</span>' if score is not None else ""
+    impact      = p.get("impact_score")
+    impact_html = (f'<span class="paper-tag" style="background:#fff3cd;color:#7a5700">'
+                   f'⚡ {impact:.2f}</span>') if impact is not None else ""
 
     st.markdown(f"""
     <div class="paper-card">
@@ -284,6 +294,7 @@ def render_paper_card(p):
         <span class="paper-tag {cls}">{tier_label(tag)}</span>
         <span class="paper-tag">{topic_display(tag)}</span>
         {score_html}
+        {impact_html}
         {"<span class='paper-tag'>" + doi + "</span>" if doi else ""}
     </div>
     """, unsafe_allow_html=True)
@@ -392,7 +403,9 @@ for k, v in {"results": [], "saved_this": 0, "selected_keys": set(), "results_pa
              "last_filtered_count": 0, "prefill": False, "log_lines": [],
              "network_paper_key": None, "network_cache": {}, "view": "landing",
              "m2_all_scored": [], "m2_score_threshold": 6,
-             "m1_save_name": "", "m2_save_name": ""}.items():
+             "m1_save_name": "", "m2_save_name": "",
+             "m2_search_mode": "recent", "m2_impact_threshold": 0.3,
+             "m2_all_deep": [], "m2_scholar_lookback": 10}.items():
     if k not in st.session_state:
         st.session_state[k] = v
 
@@ -475,8 +488,11 @@ def render_landing():
         st.markdown("""
 <div style="background:white; border:1px solid #c8e8de; border-radius:12px; padding:2rem;">
     <h2 style="color:var(--teal); margin-top:0; font-size:1.4rem;">Mode 2 — Custom Search</h2>
-    <p style="color:#555; font-size:0.92rem; line-height:1.7; margin:0;">
+    <p style="color:#555; font-size:0.92rem; line-height:1.7; margin:0 0 0.75rem 0;">
         Enter your own keywords, scholars, journals, and research focus. All input categories are independent — use any combination or just one.
+    </p>
+    <p style="color:#555; font-size:0.85rem; line-height:1.7; margin:0;">
+        Choose <strong>Recent papers</strong> (date-filtered, last days to months) for a quick sweep of new publications, or <strong>Deep search</strong> (no date filter, ranked by citation impact) for building a literature review.
     </p>
 </div>
 """, unsafe_allow_html=True)
@@ -1232,15 +1248,26 @@ def render_mode2():
             format_func=lambda x: {"view": "View only (no save)", "both": "Zotero + Notion",
                                     "zotero": "Zotero only", "notion": "Notion only"}[x],
             key="m2_target")
-        _today_m2  = datetime.today().date()
-        date_from  = st.date_input("From", value=_today_m2 - timedelta(days=30),
-                                   min_value=_today_m2 - timedelta(days=5*365), max_value=_today_m2,
-                                   key="m2_date_from")
-        date_to    = st.date_input("To",   value=_today_m2,
-                                   min_value=_today_m2 - timedelta(days=5*365), max_value=_today_m2,
-                                   key="m2_date_to")
-        if date_from > date_to:
-            st.error("'From' date must not be after 'To'.")
+        _today_m2       = datetime.today().date()
+        _search_mode_sb = st.session_state.get("m2_search_mode", "recent")
+        if _search_mode_sb == "recent":
+            date_from = st.date_input("From", value=_today_m2 - timedelta(days=30),
+                                      min_value=_today_m2 - timedelta(days=5*365), max_value=_today_m2,
+                                      key="m2_date_from")
+            date_to   = st.date_input("To",   value=_today_m2,
+                                      min_value=_today_m2 - timedelta(days=5*365), max_value=_today_m2,
+                                      key="m2_date_to")
+            if date_from > date_to:
+                st.error("'From' date must not be after 'To'.")
+        else:
+            st.slider(
+                "Impact score threshold", 0.0, 1.0, 0.3, 0.05,
+                key="m2_impact_threshold",
+                on_change=_reset_results_page,
+                help="Papers below this score are hidden. 0 = show all, higher = more selective.",
+            )
+            date_from = _today_m2 - timedelta(days=10 * 365)
+            date_to   = _today_m2
         dry_run   = st.checkbox("Dry run (preview, don't save)", value=True, key="m2_dry_run")
 
         st.divider()
@@ -1282,42 +1309,75 @@ def render_mode2():
 
     st.divider()
 
+    # ── Search mode toggle ──
+    st.radio(
+        "Search mode",
+        ["recent", "deep"],
+        format_func=lambda x: {
+            "recent": "🗓 Recent papers — date-filtered",
+            "deep":   "🔭 Deep search — no date filter, ranked by citation impact",
+        }[x],
+        horizontal=True,
+        key="m2_search_mode",
+    )
+    _active_mode = st.session_state.get("m2_search_mode", "recent")
+
     # ── Inputs ──
     st.markdown("### Search Inputs")
     st.caption("All categories are independent — search with any one or combine them freely.")
     col_left, col_right = st.columns(2)
 
     with col_left:
-        st.markdown("**Keywords** — Semantic Scholar keyword search, up to 20 results per term")
+        if _active_mode == "recent":
+            st.markdown("**Keywords** — Semantic Scholar keyword search, up to 20 results per term")
+        else:
+            st.markdown("**Keywords** — Semantic Scholar keyword search, up to 100 results per term (no date filter)")
         st.caption("One per line.")
         keywords_raw = st.text_area("Keywords", height=130, key="m2_keywords",
             placeholder="social media wellbeing\ngender norms youth\nalgorithmic fairness",
             label_visibility="collapsed")
 
-        st.markdown("**Crossover keywords** *(optional)* — same search, 8 results per term")
+        if _active_mode == "recent":
+            st.markdown("**Crossover keywords** *(optional)* — same search, 8 results per term")
+        else:
+            st.markdown("**Crossover keywords** *(optional)* — same search, 50 results per term (no date filter)")
         st.caption("Good for adjacent fields where you want signal without floods. One per line.")
         crossover_raw = st.text_area("Crossover keywords", height=110, key="m2_crossover",
             placeholder="evolutionary psychology\nbioethics\npolitical polarization",
             label_visibility="collapsed")
 
     with col_right:
-        st.markdown("**Scholars** — fetches their recent papers from Semantic Scholar")
-        st.caption("Enter full names or Semantic Scholar Author IDs (numeric). IDs are more reliable — find them at semanticscholar.org. One per line.")
-        scholars_raw = st.text_area("Scholars", height=130, key="m2_scholars",
+        st.markdown("**Scholars** — fetches their papers from Semantic Scholar")
+        if _active_mode == "recent":
+            st.caption("Enter full names or Semantic Scholar Author IDs (numeric). IDs are more reliable — find them at semanticscholar.org. One per line.")
+        else:
+            st.caption("Enter full names or Semantic Scholar Author IDs. Lookback period set below. One per line.")
+        scholars_raw = st.text_area("Scholars", height=110, key="m2_scholars",
             placeholder="Amy Orben\nAndrew Przybylski\nPhilipp Masur",
             label_visibility="collapsed")
 
-        st.markdown("**Journals** — sweeps all recent articles via OpenAlex")
-        st.caption("Enter exact journal names or OpenAlex Source IDs (format: S12345678). IDs avoid name-matching errors — find them at openalex.org. One per line.")
-        journals_raw = st.text_area("Journals", height=110, key="m2_journals",
+        if _active_mode == "deep":
+            st.selectbox(
+                "Scholar lookback period",
+                [5, 10, 20],
+                index=1,
+                format_func=lambda x: f"{x} years",
+                key="m2_scholar_lookback",
+            )
+
+        st.markdown("**Journals** — sweeps articles via OpenAlex")
+        if _active_mode == "recent":
+            st.caption("Enter exact journal names or OpenAlex Source IDs (format: S12345678). IDs avoid name-matching errors — find them at openalex.org. One per line.")
+        else:
+            st.caption("Deep search uses a 10-year lookback per journal. Enter names or OpenAlex Source IDs. One per line.")
+        journals_raw = st.text_area("Journals", height=90, key="m2_journals",
             placeholder="Journal of Communication\nNew Media & Society\nComputers in Human Behavior",
             label_visibility="collapsed")
         st.markdown("**Journal search terms** *(optional, 3–5 terms recommended)*")
-        st.caption("Filters results within the journals above. Leave blank to fetch all recent papers (slower).")
+        st.caption("Filters results within the journals above. Leave blank to fetch all articles (slower).")
         journal_keywords_raw = st.text_area("Journal search terms (optional, 3-5 terms recommended)", height=80, key="m2_journal_keywords",
             placeholder="social media\nalgorithmic curation\nmisinformation",
             label_visibility="collapsed")
-
 
     st.markdown("### Research Focus *(optional)*")
     st.caption("Claude scores each paper 0–10 for relevance. Requires an Anthropic key in the sidebar.")
@@ -1333,13 +1393,16 @@ def render_mode2():
 
     col_run, col_info = st.columns([1, 3])
     with col_run:
-        run_btn = st.button("▶ Run", disabled=not config_ok or date_from > date_to, key="m2_run")
+        _date_ok = (_active_mode == "deep") or (date_from <= date_to)
+        run_btn = st.button("▶ Run", disabled=not config_ok or not _date_ok, key="m2_run")
     with col_info:
         if not config_ok:
             st.warning("Enter your Semantic Scholar API key in the sidebar to start.")
+        elif _active_mode == "deep":
+            st.info("Deep search fetches without a date limit and ranks results by citation impact score. This may take longer than recent mode.")
         elif dry_run:
             st.info("Dry run — results shown but nothing saved.")
-        if research_focus_input.strip() and anthropic_key and (date_to - date_from).days > 90:
+        if _active_mode == "recent" and research_focus_input.strip() and anthropic_key and (date_to - date_from).days > 90:
             st.warning("Scoring is enabled for a large date range. This may take a long time and incur API costs. Consider reducing the date range or disabling scoring.")
 
     if run_btn:
@@ -1358,17 +1421,16 @@ def render_mode2():
             st.session_state["results_page"]  = 1
             st.session_state["log_lines"]     = []
             st.session_state["m2_all_scored"] = []
+            st.session_state["m2_all_deep"]   = []
             for _k in ("rr_kw_filter", "rr_journal_filter", "rr_search_filter", "rr_sort_by"):
                 st.session_state.pop(_k, None)
             st.query_params["page"] = "1"
 
-            since = date_from.strftime("%Y-%m-%d")
             pf.S2_HEADERS = {"x-api-key": s2_key} if s2_key else {}
 
             st.markdown("### Progress")
             log_container = st.empty()
             log_lines = st.session_state["log_lines"]
-            log_lines.append(f"Search range: {since} → {date_to.strftime('%Y-%m-%d')}")
 
             def update_log():
                 log_text = "\n".join(log_lines[-80:])
@@ -1384,47 +1446,105 @@ def render_mode2():
                 original_print(*args, **kwargs)
             builtins.print = patched_print
 
-            until = date_to.strftime("%Y-%m-%d")
+            run_mode = st.session_state.get("m2_search_mode", "recent")
+
             try:
                 with st.spinner("Fetching papers…"):
                     all_papers = []
 
-                    if keywords:
-                        log_lines.append(f"\n── Keywords: {len(keywords)} term(s) ──"); update_log()
-                        all_papers.extend(pf.run_keywords_flexible(keywords, since, until=until, max_per_keyword=20))
+                    if run_mode == "recent":
+                        # ── Recent papers pipeline ───────────────────────────────────
+                        since = date_from.strftime("%Y-%m-%d")
+                        until = date_to.strftime("%Y-%m-%d")
+                        log_lines.append(f"Search range: {since} → {until}"); update_log()
 
-                    if crossovers:
-                        log_lines.append(f"\n── Crossover keywords: {len(crossovers)} term(s) ──"); update_log()
-                        cx = pf.run_keywords_flexible(crossovers, since, until=until, max_per_keyword=8)
-                        for p in cx:
-                            p["tag"] = "flex:crossover"
-                        all_papers.extend(cx)
+                        if keywords:
+                            log_lines.append(f"\n── Keywords: {len(keywords)} term(s) ──"); update_log()
+                            all_papers.extend(pf.run_keywords_flexible(keywords, since, until=until, max_per_keyword=20))
 
-                    if scholars:
-                        log_lines.append(f"\n── Scholars: {len(scholars)} name(s) ──"); update_log()
-                        all_papers.extend(pf.run_authors_flexible(scholars, since, until=until))
+                        if crossovers:
+                            log_lines.append(f"\n── Crossover keywords: {len(crossovers)} term(s) ──"); update_log()
+                            cx = pf.run_keywords_flexible(crossovers, since, until=until, max_per_keyword=8)
+                            for p in cx:
+                                p["tag"] = "flex:crossover"
+                            all_papers.extend(cx)
 
-                    if journals:
-                        log_lines.append(f"\n── Journals: {len(journals)} name(s) ──"); update_log()
-                        all_papers.extend(pf.run_journals_flexible(journals, since, until=until, keywords=journal_keywords or None))
+                        if scholars:
+                            log_lines.append(f"\n── Scholars: {len(scholars)} name(s) ──"); update_log()
+                            all_papers.extend(pf.run_authors_flexible(scholars, since, until=until))
 
-                    all_papers = pf.deduplicate(all_papers)
-                    log_lines.append(f"\n{len(all_papers)} papers after cross-source dedup"); update_log()
+                        if journals:
+                            log_lines.append(f"\n── Journals: {len(journals)} name(s) ──"); update_log()
+                            all_papers.extend(pf.run_journals_flexible(journals, since, until=until, keywords=journal_keywords or None))
 
-                    if research_focus_input.strip():
-                        if anthropic_key:
-                            log_lines.append(f"\n── Scoring {len(all_papers)} papers with Claude ──"); update_log()
-                            all_papers = pf.score_papers(all_papers, research_focus_input.strip(), api_key=anthropic_key)
-                            log_lines.append(f"{len(all_papers)} papers after scoring"); update_log()
-                            st.session_state["m2_all_scored"] = list(all_papers)
-                            threshold_now = st.session_state.get("m2_score_threshold", 6)
-                            before_filter = len(all_papers)
-                            all_papers = [p for p in all_papers
-                                          if p.get("relevance_score") is None or p.get("relevance_score", 0) >= threshold_now]
-                            log_lines.append(f"{len(all_papers)} papers kept (score ≥ {threshold_now}, was {before_filter})"); update_log()
-                        else:
-                            log_lines.append("[relevance] Anthropic API key not set — skipping scoring"); update_log()
+                        all_papers = pf.deduplicate(all_papers)
+                        log_lines.append(f"\n{len(all_papers)} papers after cross-source dedup"); update_log()
 
+                        if research_focus_input.strip():
+                            if anthropic_key:
+                                log_lines.append(f"\n── Scoring {len(all_papers)} papers with Claude ──"); update_log()
+                                all_papers = pf.score_papers(all_papers, research_focus_input.strip(), api_key=anthropic_key)
+                                log_lines.append(f"{len(all_papers)} papers after scoring"); update_log()
+                                st.session_state["m2_all_scored"] = list(all_papers)
+                                threshold_now = st.session_state.get("m2_score_threshold", 6)
+                                before_filter = len(all_papers)
+                                all_papers = [p for p in all_papers
+                                              if p.get("relevance_score") is None or p.get("relevance_score", 0) >= threshold_now]
+                                log_lines.append(f"{len(all_papers)} papers kept (score ≥ {threshold_now}, was {before_filter})"); update_log()
+                            else:
+                                log_lines.append("[relevance] Anthropic API key not set — skipping scoring"); update_log()
+
+                    else:
+                        # ── Deep search pipeline ─────────────────────────────────────
+                        log_lines.append("Mode: Deep search (no date filter, citation-impact scoring)"); update_log()
+
+                        if keywords:
+                            log_lines.append(f"\n── Deep keywords: {len(keywords)} term(s), up to 100 each ──"); update_log()
+                            all_papers.extend(pf.deep_search_s2(keywords, max_per_keyword=100))
+
+                        if crossovers:
+                            log_lines.append(f"\n── Deep crossover: {len(crossovers)} term(s), up to 50 each ──"); update_log()
+                            cx = pf.deep_search_s2(crossovers, max_per_keyword=50)
+                            for p in cx:
+                                p["tag"] = "flex:crossover"
+                            all_papers.extend(cx)
+
+                        if scholars:
+                            lookback_yrs = st.session_state.get("m2_scholar_lookback", 10)
+                            since_scholars = (_today_m2 - timedelta(days=lookback_yrs * 365)).strftime("%Y-%m-%d")
+                            log_lines.append(f"\n── Deep scholars: {len(scholars)} name(s), {lookback_yrs}-year lookback ──"); update_log()
+                            all_papers.extend(pf.run_authors_flexible(scholars, since_scholars))
+
+                        if journals:
+                            log_lines.append(f"\n── Deep journals: {len(journals)} name(s), 10-year lookback ──"); update_log()
+                            all_papers.extend(pf.deep_search_openalex(journals, keywords=journal_keywords or None))
+
+                        all_papers = pf.deduplicate(all_papers)
+                        log_lines.append(f"\n{len(all_papers)} papers after dedup"); update_log()
+
+                        log_lines.append("\n── Computing citation impact scores ──"); update_log()
+                        all_papers = pf.compute_impact_score(all_papers)
+                        st.session_state["m2_all_deep"] = list(all_papers)
+
+                        impact_thr = st.session_state.get("m2_impact_threshold", 0.3)
+                        all_papers = [p for p in all_papers if p.get("impact_score", 0) >= impact_thr]
+                        log_lines.append(f"{len(all_papers)} papers above impact threshold {impact_thr}"); update_log()
+
+                        if research_focus_input.strip():
+                            if anthropic_key:
+                                log_lines.append(f"\n── Scoring {len(all_papers)} papers with Claude ──"); update_log()
+                                all_papers = pf.deep_score_papers(all_papers, research_focus_input.strip(), api_key=anthropic_key)
+                                log_lines.append(f"{len(all_papers)} papers after scoring"); update_log()
+                                st.session_state["m2_all_scored"] = list(all_papers)
+                                threshold_now = st.session_state.get("m2_score_threshold", 6)
+                                before_filter = len(all_papers)
+                                all_papers = [p for p in all_papers
+                                              if p.get("relevance_score") is None or p.get("relevance_score", 0) >= threshold_now]
+                                log_lines.append(f"{len(all_papers)} papers kept (score ≥ {threshold_now}, was {before_filter})"); update_log()
+                            else:
+                                log_lines.append("[relevance] Anthropic API key not set — skipping scoring"); update_log()
+
+                    # ── Save / dry-run (shared) ──────────────────────────────────
                     if not dry_run and target != "view":
                         all_papers = pf.filter_new(all_papers)
                         log_lines.append(f"\n{len(all_papers)} new papers (after dedup with history)")
@@ -1464,11 +1584,17 @@ def render_mode2():
                 f'font-size:0.75rem;padding:1rem;border-radius:4px;max-height:400px;overflow-y:auto;">'
                 f'<pre>{log_text}</pre></div>', unsafe_allow_html=True)
 
-    _m2_all_scored = st.session_state.get("m2_all_scored", [])
+    _m2_all_scored  = st.session_state.get("m2_all_scored", [])
+    _m2_all_deep    = st.session_state.get("m2_all_deep", [])
+    _current_mode   = st.session_state.get("m2_search_mode", "recent")
+
     if _m2_all_scored:
         _threshold = st.session_state.get("m2_score_threshold", 6)
         _display_results = [p for p in _m2_all_scored
                             if p.get("relevance_score") is None or p.get("relevance_score", 0) >= _threshold]
+    elif _current_mode == "deep" and _m2_all_deep:
+        _impact_thr = st.session_state.get("m2_impact_threshold", 0.3)
+        _display_results = [p for p in _m2_all_deep if p.get("impact_score", 0) >= _impact_thr]
     else:
         _display_results = st.session_state.get("results", [])
 
@@ -1483,6 +1609,11 @@ def render_mode2():
         anthropic_key=anthropic_key,
         library_type=zotero_lib_type,
     )
+
+    if _current_mode == "deep" and _m2_all_deep and not _m2_all_scored:
+        _thr_d = st.session_state.get("m2_impact_threshold", 0.3)
+        _shown_d = sum(1 for p in _m2_all_deep if p.get("impact_score", 0) >= _thr_d)
+        st.caption(f"{_shown_d} of {len(_m2_all_deep)} papers shown (impact score ≥ {_thr_d}) · adjust threshold in sidebar")
 
     if _m2_all_scored:
         st.divider()

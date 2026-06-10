@@ -25,7 +25,7 @@ S2_HEADERS: dict = {}
 S2_BASE          = "https://api.semanticscholar.org/graph/v1"
 S2_BULK_SEARCH   = f"{S2_BASE}/paper/search/bulk"
 S2_AUTHOR_SEARCH = f"{S2_BASE}/author/search"
-PAPER_FIELDS     = "title,authors,year,abstract,externalIds,venue,publicationDate,url,openAccessPdf,publicationTypes"
+PAPER_FIELDS     = "title,authors,year,abstract,externalIds,venue,publicationDate,url,openAccessPdf,publicationTypes,citationCount"
 
 OA_HEADERS = {"User-Agent": "mailto:jiayi.yan0124@gmail.com"}
 
@@ -182,16 +182,17 @@ def normalize(paper, tag="", search_term=""):
         time.sleep(0.5)
 
     return {
-        "title":    paper.get("title", "Untitled") or "Untitled",
-        "authors":  authors,
-        "year":     str(paper.get("year") or paper.get("publication_year") or ""),
-        "pub_date": pub_date,
-        "abstract": abstract,
-        "journal":  paper.get("venue") or paper.get("journal", "") or "",
-        "doi":      doi,
-        "url":         paper.get("url", "") or pdf_url,
-        "tag":         tag,
-        "search_term": search_term,
+        "title":          paper.get("title", "Untitled") or "Untitled",
+        "authors":        authors,
+        "year":           str(paper.get("year") or paper.get("publication_year") or ""),
+        "pub_date":       pub_date,
+        "abstract":       abstract,
+        "journal":        paper.get("venue") or paper.get("journal", "") or "",
+        "doi":            doi,
+        "url":            paper.get("url", "") or pdf_url,
+        "tag":            tag,
+        "search_term":    search_term,
+        "citation_count": paper.get("citationCount", 0) or 0,
     }
 
 def deduplicate(papers):
@@ -205,15 +206,16 @@ def deduplicate(papers):
 
 # ── S2 bulk search ────────────────────────────────────────────────────────────
 
-def search_bulk(query, since, until="", max_results=100):
+def search_bulk(query, since="", until="", max_results=100):
     params = {
-        "query":                 query,
-        "fields":                PAPER_FIELDS,
-        "publicationTypes":      "JournalArticle",
-        "publicationDateOrYear": f"{since}:{until}",
-        "sort":                  "publicationDate:desc",
-        "fieldsOfStudy": "Sociology,Psychology,Political Science,Education,Linguistics,Communication",
+        "query":            query,
+        "fields":           PAPER_FIELDS,
+        "publicationTypes": "JournalArticle",
+        "sort":             "publicationDate:desc",
+        "fieldsOfStudy":    "Sociology,Psychology,Political Science,Education,Linguistics,Communication",
     }
+    if since:
+        params["publicationDateOrYear"] = f"{since}:{until}"
     results = []
     while len(results) < max_results:
         data = _request("GET", S2_BULK_SEARCH, params=params)
@@ -638,6 +640,94 @@ def run_journals_flexible(journal_names, since, until="", keywords=None):
     deduped = deduplicate(collected)
     print(f"\n[flex:journals] {len(deduped)} papers after dedup")
     return deduped
+
+
+# ── Deep search pipeline ──────────────────────────────────────────────────────
+
+def deep_search_s2(keywords, max_per_keyword=100):
+    """Keyword search with no date filter — fetches broadly for literature review."""
+    collected = []
+    for kw in keywords:
+        kw = kw.strip()
+        if not kw:
+            continue
+        print(f"  [deep] keyword: {kw}")
+        papers = search_bulk(kw, since="", until="", max_results=max_per_keyword)
+        collected.extend(normalize(p, tag="flex:keyword", search_term=kw) for p in papers)
+        time.sleep(1.2)
+    deduped = deduplicate(collected)
+    print(f"\n[deep:s2] {len(deduped)} papers after dedup")
+    return deduped
+
+
+def deep_search_openalex(journal_names, keywords=None, lookback_years=10):
+    """Journal sweep with a wide lookback (default 10 years) and no end-date cutoff."""
+    from datetime import date as _date
+    since = (_date.today() - timedelta(days=lookback_years * 365)).strftime("%Y-%m-%d")
+    collected = []
+    kw_list   = keywords if keywords else [None]
+    print(f"\n[deep:openalex] journal sweep (since {since})")
+    for entry in journal_names:
+        entry = entry.strip()
+        if not entry:
+            continue
+        if re.match(r'^S\d+$', entry):
+            source_id = entry
+            label     = entry
+        else:
+            label     = entry
+            source_id = _openalex_source_id_by_name(entry)
+            if not source_id:
+                print(f"    {entry[:50]}: not found in OpenAlex — skipping")
+                continue
+        journal_papers = []
+        for i, kw in enumerate(kw_list):
+            papers = _fetch_openalex_by_source_id(label, source_id, since, until="",
+                                                   tag="flex:journal", keyword=kw,
+                                                   search_term=label)
+            journal_papers.extend(papers)
+            if i < len(kw_list) - 1:
+                time.sleep(0.5)
+        journal_papers = deduplicate(journal_papers)
+        kw_note = f" across {len(kw_list)} keyword{'s' if len(kw_list) != 1 else ''}" if keywords else ""
+        print(f"    {label[:50]}: {len(journal_papers)} papers{kw_note}")
+        collected.extend(journal_papers)
+    deduped = deduplicate(collected)
+    print(f"\n[deep:openalex] {len(deduped)} papers after dedup")
+    return deduped
+
+
+def compute_impact_score(papers):
+    """Set impact_score (0.0–1.0) on each paper based on citations, recency, and abstract.
+
+    citation_count weight: 0.65 (log-normalised over batch)
+    recency weight:        0.25 (linear decay over 20 years)
+    abstract bonus:        0.10
+
+    Modifies papers in-place and returns the same list.
+    """
+    from datetime import date as _date
+    import math
+    current_year = _date.today().year
+    max_cit = max((p.get("citation_count", 0) or 0 for p in papers), default=0)
+    log_max = math.log(1 + max_cit) if max_cit > 0 else 1.0
+    for p in papers:
+        cit  = p.get("citation_count", 0) or 0
+        citation_norm = math.log(1 + cit) / log_max
+        try:
+            year = int(p.get("year") or 0)
+        except (ValueError, TypeError):
+            year = 0
+        recency = max(0.0, 1.0 - (current_year - year) / 20.0) if year else 0.0
+        abstract_bonus = 0.1 if (p.get("abstract") or "").strip() else 0.0
+        score = min(1.0, 0.65 * citation_norm + 0.25 * recency + abstract_bonus)
+        p["impact_score"] = round(score, 3)
+    return papers
+
+
+def deep_score_papers(papers, research_focus, api_key=""):
+    """Relevance-score papers for literature review context. Thin wrapper over score_papers."""
+    return score_papers(papers, research_focus, api_key=api_key)
 
 
 # ── Tier helpers ──────────────────────────────────────────────────────────────
